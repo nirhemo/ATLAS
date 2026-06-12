@@ -1,0 +1,56 @@
+{
+  "_comment": "ATLAS single source of truth. Both the Owner (via Settings UI) and the AGE edit this file. Every L3 setting maps here.",
+  "version": "0.1.0",
+  "general": {
+    "owner_name": "Owner",
+    "timezone": "auto",
+    "language": "en"
+  },
+  "voice": {
+    "wake_word_enabled": true,
+    "wake_word_model": "hey_jarvis",
+    "wake_word_sensitivity": 0.6,
+    "vad_silence_ms": 700,
+    "stt_model": "base.en",
+    "tts_voice": "kokoro:af_heart",
+    "speech_rate": 1.0,
+    "streaming_tts": true,
+    "mic_mute": false
+  },
+  "model": {
+    "backend": "claude-sonnet-4-6",
+    "escalation_model": "claude-opus-4-8",
+    "fallback_chain": ["claude-sonnet-4-6", "local-gemma", "offline"],
+    "api_key_ref": "keychain:atlas-anthropic-api-key",
+    "api_key_env": "ANTHROPIC_API_KEY",
+    "max_tokens": 1024,
+    "temperature": 0.4
+  },
+  "memory": {
+    "vault_path": "atlas/memory/vault",
+    "episodic_path": "atlas/memory/episodic",
+    "index_db": "atlas/memory/index.db",
+    "retrieval_top_k": 6,
+    "consolidation_time": "03:00",
+    "memory_writing_paused": false
+  },
+  "upgrade": {
+    "approval_level": "PATCH_only",
+    "cycle_schedule": "nightly@03:00",
+    "meta_recursion_every_n_cycles": 10
+  },
+  "connectors": {
+    "registry_path": "atlas/connectors/registry.json"
+  },
+  "privacy": {
+    "episodic_retention_days": 90,
+    "encrypt_at_rest": true,
+    "secrets_store": "macos_keychain",
+    "third_party_pii_retention_days": 90
+  },
+  "ui": {
+    "theme": "dark_futuristic",
+    "accent": "#00e0ff",
+    "port": 8765
+  }
+}

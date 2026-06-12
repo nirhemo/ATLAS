@@ -1,0 +1,35 @@
+{
+  "engine": "sqlite-vec",
+  "engine_alternatives": ["lancedb"],
+  "db_path": "atlas/memory/index.db",
+  "embedding": {
+    "provider": "local",
+    "model": "bge-small-en-v1.5",
+    "model_alternatives": ["all-MiniLM-L6-v2", "nomic-embed-text"],
+    "dimensions": 384,
+    "normalize": true,
+    "runtime": "onnxruntime (CPU/CoreML) — no cloud calls, R3 model-agnostic",
+    "ram_budget_mb": 200,
+    "notes": "Embeddings are computed locally so memory never leaves the device. If dimensions change, vec_chunks in schema.sql must be recreated and the vault reindexed."
+  },
+  "chunking": {
+    "strategy": "markdown-section",
+    "max_tokens": 256,
+    "overlap_tokens": 32,
+    "notes": "Split per markdown heading/paragraph so a retrieved chunk maps cleanly back to a section of an openable note."
+  },
+  "retrieval": {
+    "mode": "tool",
+    "top_k": 6,
+    "min_similarity": 0.30,
+    "return": "full_note_with_links",
+    "notes": "Retrieval is a TOOL the model calls when needed (R: L2), not an automatic pre-turn dump. Semantic search finds candidate chunks; the WHOLE note (with its [[links]]) enters context, and the answer stays traceable to that note."
+  },
+  "reindex": {
+    "trigger": "on_note_change",
+    "method": "incremental",
+    "change_detection": "content_hash",
+    "full_rebuild_command": "python atlas/memory/reindex.py --full",
+    "notes": "Incremental reindex on save; full rebuild is always possible from vault + episodic since the DB is derived, not source-of-truth."
+  }
+}

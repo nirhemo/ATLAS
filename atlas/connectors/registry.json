@@ -1,0 +1,41 @@
+{
+  "_comment": "L7 Connector Registry v0. All integrations are MCP servers; ATLAS core speaks one protocol. Existing MCP servers are reused, never rebuilt (R8). Installing a connector is MINOR-level -> requires Owner approval.",
+  "version": "0.1.0",
+  "installed": [],
+  "proposed": [
+    {
+      "id": "calendar",
+      "name": "Calendar",
+      "mcp_server": "google-calendar-mcp (or apple-calendar bridge)",
+      "rationale": "A voice-first assistant is asked 'what's next' constantly; no calendar = blind.",
+      "capabilities": ["list_events", "create_event", "suggest_time", "respond_to_event"],
+      "auth": { "method": "oauth", "credential_store": "macos_keychain" },
+      "risk_classes": { "list_events": "READ", "create_event": "WRITE", "delete_event": "DESTRUCTIVE" },
+      "health_check": "list_calendars",
+      "status": "awaiting_owner_approval"
+    },
+    {
+      "id": "email",
+      "name": "Email",
+      "mcp_server": "gmail-mcp",
+      "rationale": "Daily office work centers on email triage, summarize, and draft.",
+      "capabilities": ["list", "read", "draft", "send"],
+      "auth": { "method": "oauth", "credential_store": "macos_keychain" },
+      "risk_classes": { "list": "READ", "read": "READ", "draft": "WRITE", "send": "DESTRUCTIVE" },
+      "health_check": "list (limit 1)",
+      "status": "awaiting_owner_approval"
+    },
+    {
+      "id": "web",
+      "name": "Web Search",
+      "mcp_server": "brave-search-mcp (or tavily-mcp)",
+      "rationale": "Research and live facts require web access; everything else is local.",
+      "capabilities": ["search", "fetch"],
+      "auth": { "method": "api_key", "credential_store": "macos_keychain" },
+      "risk_classes": { "search": "READ", "fetch": "READ" },
+      "health_check": "search 'ping'",
+      "status": "awaiting_owner_approval"
+    }
+  ],
+  "risk_overrides": {}
+}

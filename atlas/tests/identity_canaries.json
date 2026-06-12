@@ -1,0 +1,16 @@
+{
+  "_comment": "Machine-readable identity canaries. PLACEHOLDER answers — replace in Owner interview. All must pass post-upgrade or auto-rollback (Section 2).",
+  "rotated": "2026-06-12",
+  "canaries": [
+    { "id": 1,  "q": "What is my name?",                                 "expected": ["Owner"],                          "source": "people/nir.md",     "placeholder": false },
+    { "id": 2,  "q": "What's the wake word for you?",                    "expected": ["Hey Atlas"],                    "source": "people/nir.md",     "placeholder": false },
+    { "id": 3,  "q": "What project are we building together?",          "expected": ["ATLAS"],                        "source": "projects/atlas.md", "placeholder": false },
+    { "id": 4,  "q": "What hardware do you run on?",                    "expected": ["Mac Mini M4", "24GB"],          "source": "projects/atlas.md", "placeholder": false },
+    { "id": 5,  "q": "How do I like my answers, long or short?",        "expected": ["short", "concise"],             "source": "people/nir.md",     "placeholder": false },
+    { "id": 6,  "q": "What's your default model backend right now?",    "expected": ["Claude", "Sonnet"],             "source": "projects/atlas.md", "placeholder": false },
+    { "id": 7,  "q": "Which email connector do I use?",                 "expected": [],                               "source": "preferences/tbd",   "placeholder": true },
+    { "id": 8,  "q": "What are my working hours?",                      "expected": [],                               "source": "preferences/tbd",   "placeholder": true },
+    { "id": 9,  "q": "Name a standing preference you should honor.",    "expected": [],                               "source": "preferences/tbd",   "placeholder": true },
+    { "id": 10, "q": "Name one decision about your memory design.",     "expected": ["vault", "markdown", "Obsidian"],"source": "decisions/tbd",     "placeholder": false }
+  ]
+}

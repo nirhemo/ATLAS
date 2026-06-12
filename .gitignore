@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# ATLAS runtime artifacts (derived / local-only)
+atlas/memory/index.db
+atlas/memory/index.db-*
+atlas/logs/*.jsonl          # daily event logs are runtime, machine-local
+atlas/snapshots/*/
+!atlas/snapshots/.gitkeep
+
+# Secrets must never be committed (Section 8 — Keychain only)
+.env
+*.key

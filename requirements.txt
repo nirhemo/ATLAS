@@ -1,0 +1,15 @@
+# ATLAS runtime (Phase 1). Pinned-loose; all run locally except the Claude API.
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+anthropic>=0.40        # optional at runtime — offline mode works without a key
+httpx>=0.27            # used by the test client
+
+# dev / test
+pytest>=8.0
+
+# --- Documented but NOT required for Cycle 0 (zero-download offline run) ---
+# Memory embeddings upgrade (Cycle 1): sqlite-vec, onnxruntime, a local
+#   embedding model (bge-small-en-v1.5). Until then retrieval is keyword-based.
+# Voice pipeline (real hardware): openwakeword, silero-vad, whisper.cpp bindings,
+#   kokoro-onnx / piper-tts. These need a mic + speakers, not present in CI.

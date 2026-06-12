@@ -1,0 +1,87 @@
+{
+  "_comment": "L6 Orchestration — routing, fallback chain, and the uniform tool schema. Backend-independent (R3): switching models must not change identity or tools.",
+  "version": "1.0.0",
+  "routing": {
+    "default": "claude-sonnet-4-6",
+    "escalate_to": "claude-opus-4-8",
+    "escalate_when": [
+      "multi-step reasoning",
+      "long document synthesis",
+      "ambiguous or high-stakes requests"
+    ],
+    "local_candidate": "gemma (Phase 2, via Ollama/MLX)"
+  },
+  "fallback_chain": [
+    { "tier": "primary",  "backend": "claude-api",   "on_fail": "secondary" },
+    { "tier": "secondary","backend": "local-gemma",  "on_fail": "degraded"  },
+    { "tier": "degraded", "backend": "offline",      "on_fail": null,
+      "behavior": "Answer from local memory + handle local tasks (timers, recall). State plainly what needs connectivity. Never hang or brick (Mycroft lesson)." }
+  ],
+  "tool_schema": [
+    {
+      "name": "memory_search",
+      "risk": "READ",
+      "description": "Search the memory vault for notes about a person, project, preference, or decision. Returns full notes with their links. Call only when continuity/context is needed.",
+      "input_schema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }
+    },
+    {
+      "name": "remember",
+      "risk": "WRITE",
+      "description": "Flag a fact to be consolidated into the vault tonight. Does not write speculation; the nightly job verifies against the transcript before storing.",
+      "input_schema": { "type": "object", "properties": { "fact": { "type": "string" }, "entity": { "type": "string" } }, "required": ["fact"] }
+    },
+    {
+      "name": "get_time",
+      "risk": "READ",
+      "description": "Get the current local date and time.",
+      "input_schema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "calendar_list_events",
+      "risk": "READ",
+      "connector": "calendar",
+      "description": "List upcoming calendar events in a date range.",
+      "input_schema": { "type": "object", "properties": { "start": { "type": "string" }, "end": { "type": "string" } } }
+    },
+    {
+      "name": "calendar_create_event",
+      "risk": "WRITE",
+      "connector": "calendar",
+      "description": "Create a calendar event. Confirm briefly after.",
+      "input_schema": { "type": "object", "properties": { "title": { "type": "string" }, "start": { "type": "string" }, "end": { "type": "string" } }, "required": ["title", "start"] }
+    },
+    {
+      "name": "email_list",
+      "risk": "READ",
+      "connector": "email",
+      "description": "List/triage recent emails (summaries only).",
+      "input_schema": { "type": "object", "properties": { "query": { "type": "string" }, "limit": { "type": "integer" } } }
+    },
+    {
+      "name": "email_draft",
+      "risk": "WRITE",
+      "connector": "email",
+      "description": "Draft an email (saved as draft, NOT sent).",
+      "input_schema": { "type": "object", "properties": { "to": { "type": "string" }, "subject": { "type": "string" }, "body": { "type": "string" } }, "required": ["to", "body"] }
+    },
+    {
+      "name": "email_send",
+      "risk": "DESTRUCTIVE",
+      "connector": "email",
+      "description": "Send an email. DESTRUCTIVE — requires explicit verbal confirmation before calling.",
+      "input_schema": { "type": "object", "properties": { "draft_id": { "type": "string" } }, "required": ["draft_id"] }
+    },
+    {
+      "name": "web_search",
+      "risk": "READ",
+      "connector": "web",
+      "description": "Search the web for current information. Summarize results with sources.",
+      "input_schema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }
+    }
+  ],
+  "risk_policy": {
+    "READ": "auto-allowed",
+    "WRITE": "allowed per settings; confirm briefly after",
+    "DESTRUCTIVE": "ALWAYS requires explicit verbal confirmation before execution"
+  }
+}
