@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -118,6 +118,20 @@ def consolidate() -> dict[str, Any]:
     return vault.consolidate()
 
 
+@app.post("/api/reload")
+def reload_config() -> dict[str, Any]:
+    """Re-read settings/registry and rebuild the core singletons. Lets the
+    Settings UI apply changes (e.g. a newly-approved connector, a model-backend
+    switch) without restarting the process."""
+    global router, vault, registry
+    cfg.reload_settings()
+    router = Router()
+    vault = VaultStore()
+    registry = ConnectorRegistry()
+    return {"reloaded": True, "backend": router.backend,
+            "connectors_installed": list(registry.installed_ids())}
+
+
 # --------------------------------------------------------------------------- #
 # WebSocket — live voice-pipeline state for the orb (text chat also works here)
 # --------------------------------------------------------------------------- #
@@ -149,8 +163,3 @@ def index() -> FileResponse:
 
 if WEB_DIR.exists():
     app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
-
-
-@app.exception_handler(404)
-def not_found(_req, _exc):  # noqa: ANN001
-    return JSONResponse({"error": "not found"}, status_code=404)

@@ -9,7 +9,14 @@ venv/
 # ATLAS runtime artifacts (derived / local-only)
 atlas/memory/index.db
 atlas/memory/index.db-*
-atlas/logs/*.jsonl          # daily event logs are runtime, machine-local
+
+# Daily event logs are runtime, machine-local
+atlas/logs/*.jsonl
+
+# Date-named episodic transcripts are runtime data (example.jsonl is committed)
+atlas/memory/episodic/[0-9]*.jsonl
+
+# Snapshots of state before MAJOR/MINOR upgrades
 atlas/snapshots/*/
 !atlas/snapshots/.gitkeep
 

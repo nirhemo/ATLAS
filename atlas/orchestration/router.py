@@ -106,14 +106,18 @@ class Router:
 
     # ----- offline degraded path --------------------------------------- #
     def _chat_offline(self, text: str, *, confirmed: bool) -> tuple[str, list[str], int | None]:
-        low = text.lower().strip()
+        stripped = text.strip()
+        low = stripped.lower()
 
         if re.search(r"\b(time|date|what day)\b", low):
             return self.tools.dispatch("get_time", {}), ["get_time"], None
 
-        m = re.match(r"(remember|note) (that )?(.+)", low)
+        # Match on the stripped ORIGINAL text so the captured fact keeps its
+        # casing and offsets line up (don't slice raw text with stripped offsets).
+        m = re.match(r"(?:remember|note)\s+(?:that\s+)?(.+)", stripped,
+                     re.IGNORECASE | re.DOTALL)
         if m:
-            fact = text[m.start(3):].strip()
+            fact = m.group(1).strip()
             return self.tools.dispatch("remember", {"fact": fact}), ["remember"], None
 
         # try memory recall for "what/who/where is my ..." style questions

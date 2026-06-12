@@ -24,3 +24,23 @@ the system runs with zero model downloads), the live voice loop on real hardware
 and replacing every Owner placeholder (canaries, connector auth) via the
 interview. Next cycle should also start honoring R7 — research before the first
 MINOR patch — now that there's a baseline to measure against.
+
+### Cycle 0 — Post-bootstrap review (VERIFY step, Section 3 #7)
+
+Ran a high-effort code review (7 finder angles + verification) and a strict
+Section 9 completion audit before declaring the cycle done. The audit: items
+1–7 fully DONE; **item 8 PARTIAL** — VERSION.json + changelog shipped, but 3 of
+the 10 identity canaries are placeholders because the Owner interview was
+deferred (the engine's standing decision, recorded in VERSION.json
+`owner_approval_pending`). Honest status, not silent over-claim. The review
+caught real bugs the test suite missed — most usefully a `remember` handler that
+sliced raw text with offsets computed on a stripped/lowercased copy (leading
+whitespace garbled the stored fact), and a frontmatter parser that treated any
+`---`-prefixed line as the closing delimiter. Lesson worth keeping: **green
+tests are necessary but not sufficient — an adversarial read of just-written
+code finds the off-by-context bugs that happy-path tests sail past.** Both are
+now regression-tested (16 tests green). Also fixed: vault re-tokenized on every
+query (added an mtime-cache, since this sits on the latency path), duplicated
+metric extraction in L4, a throwaway second Router built at startup, and dead
+code. Net: the VERIFY step paid for itself in the very first cycle — keep it
+mandatory, never rubber-stamp a bootstrap because it "ran."

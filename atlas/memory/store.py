@@ -8,7 +8,6 @@ sqlite-vec without changing this module's interface — `search()` stays the sam
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import re
@@ -41,13 +40,14 @@ def _now_iso() -> str:
 # scalars, booleans, numbers, and inline [a, b] lists). Zero dependencies.
 # --------------------------------------------------------------------------- #
 def _parse_frontmatter(raw: str) -> tuple[dict[str, Any], str]:
-    if not raw.startswith("---"):
+    lines = raw.splitlines()
+    if not lines or lines[0].strip() != "---":
         return {}, raw
-    end = raw.find("\n---", 3)
-    if end == -1:
+    close = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
+    if close is None:
         return {}, raw
-    fm_block = raw[3:end].strip("\n")
-    body = raw[end + 4:].lstrip("\n")
+    fm_block = "\n".join(lines[1:close])
+    body = "\n".join(lines[close + 1:]).lstrip("\n")
     meta: dict[str, Any] = {}
     for line in fm_block.splitlines():
         if not line.strip() or ":" not in line:
@@ -104,9 +104,19 @@ class VaultStore:
         self.episodic = episodic or cfg.episodic_dir()
         self.vault.mkdir(parents=True, exist_ok=True)
         self.episodic.mkdir(parents=True, exist_ok=True)
+        self._notes_cache: list[Note] | None = None
+        self._notes_sig: tuple = ()
 
     # ----- read --------------------------------------------------------- #
+    def _vault_signature(self) -> tuple:
+        """Cheap fingerprint of the vault (paths + mtimes) to invalidate the cache."""
+        return tuple((str(p), p.stat().st_mtime_ns)
+                     for p in sorted(self.vault.rglob("*.md")))
+
     def load_notes(self) -> list[Note]:
+        sig = self._vault_signature()
+        if self._notes_cache is not None and self._notes_sig == sig:
+            return self._notes_cache
         notes: list[Note] = []
         for p in sorted(self.vault.rglob("*.md")):
             if p.name.lower() == "readme.md":
@@ -119,6 +129,8 @@ class VaultStore:
                 path=p, rel=str(p.relative_to(self.vault)), title=title,
                 type=str(meta.get("type", "topic")), body=body, meta=meta,
             ))
+        self._notes_cache = notes
+        self._notes_sig = sig
         return notes
 
     def search(self, query: str, top_k: int | None = None) -> list[tuple[Note, float]]:
@@ -208,7 +220,8 @@ class VaultStore:
                     body += f"\n\n> ATLAS suggestion ({_now_iso()}): {fact}\n"
                 else:
                     body = body.rstrip() + f"\n- {fact}\n"
-                    meta["updated"] = date.today().isoformat()
+                # The file changed either way → record it so the activity feed shows it.
+                meta["updated"] = date.today().isoformat()
                 note_path.write_text(_render_note(meta, body), encoding="utf-8")
                 updated += 1
             else:
@@ -316,7 +329,3 @@ def _render_note(meta: dict[str, Any], body: str) -> str:
         lines.append(f"{k}: {v}")
     lines.append("---")
     return "\n".join(lines) + "\n\n" + body.lstrip("\n")
-
-
-def content_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]

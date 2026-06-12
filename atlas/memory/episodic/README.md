@@ -27,4 +27,5 @@ into the vault and keeps back-pointers (note → transcript line) for auditabili
 - Retention window is configurable in `settings.json` → `privacy.episodic_retention_days`.
 - No audio is ever written here — only post-STT text. Audio never leaves the device.
 
-> `2026-06-12.jsonl` alongside this README is a seed example.
+> `example.jsonl` alongside this README shows the format. Live transcripts are
+> written to date-named files (`YYYY-MM-DD.jsonl`), which are runtime/gitignored.

@@ -49,22 +49,28 @@ def _read_day(day: str) -> list[dict[str, Any]]:
     return out
 
 
-def metrics_today() -> dict[str, Any]:
-    """Aggregate today's interaction events for the dashboard."""
-    events = [e for e in _read_day(date.today().isoformat())
-              if e.get("type") == "interaction"]
+def _series(day: str) -> tuple[list, list, list, int]:
+    """Extract (latency, accuracy, memory_hit) series + interaction count for a day.
+    Single source for both the dashboard metrics and the daily health report."""
+    events = [e for e in _read_day(day) if e.get("type") == "interaction"]
     lat = [e["data"]["latency_ms"] for e in events
            if e.get("data", {}).get("latency_ms") is not None]
     acc = [e["data"]["accuracy"] for e in events
            if e.get("data", {}).get("accuracy") is not None]
     hit = [e["data"]["memory_hit"] for e in events
            if e.get("data", {}).get("memory_hit") is not None]
+    return lat, acc, hit, len(events)
+
+
+def metrics_today() -> dict[str, Any]:
+    """Aggregate today's interaction events for the dashboard."""
+    lat, acc, hit, count = _series(date.today().isoformat())
     return {
         "latency_ms": round(statistics.median(lat)) if lat else 0,
         "latency_trend": 0,
         "accuracy": round(statistics.mean(acc), 3) if acc else 1.0,
         "accuracy_trend": 0,
-        "interactions": len(events),
+        "interactions": count,
         "interactions_trend": 0,
         "memory_hit": round(statistics.mean(hit), 3) if hit else 1.0,
         "memhit_trend": 0,
@@ -74,16 +80,10 @@ def metrics_today() -> dict[str, Any]:
 def health_report(day: str | None = None) -> dict[str, Any]:
     """Compute the daily health report (Section 4) and log it."""
     d = day or date.today().isoformat()
-    events = [e for e in _read_day(d) if e.get("type") == "interaction"]
-    lat = [e["data"]["latency_ms"] for e in events
-           if e.get("data", {}).get("latency_ms") is not None]
-    acc = [e["data"]["accuracy"] for e in events
-           if e.get("data", {}).get("accuracy") is not None]
-    hit = [e["data"]["memory_hit"] for e in events
-           if e.get("data", {}).get("memory_hit") is not None]
+    lat, acc, hit, count = _series(d)
     report = {
         "date": d,
-        "interactions": len(events),
+        "interactions": count,
         "latency_p50_ms": round(statistics.median(lat)) if lat else 0,
         "latency_p95_ms": round(sorted(lat)[int(len(lat) * 0.95)]) if lat else 0,
         "accuracy": round(statistics.mean(acc), 3) if acc else None,

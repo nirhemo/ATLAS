@@ -53,6 +53,16 @@ def test_consolidate_is_idempotent(tmp_path):
     assert second["lines_processed"] == 0
 
 
+def test_frontmatter_ignores_dash_lines_in_body(tmp_path):
+    # A body that contains a '----' rule or a '---xyz' line must not be mistaken
+    # for the closing frontmatter delimiter.
+    meta, body = _parse_frontmatter(
+        "---\ntype: topic\nconfidence: 0.9\n---\n\n# T\n\nintro\n\n----\n\nmore")
+    assert meta["type"] == "topic"
+    assert meta["confidence"] == 0.9
+    assert "more" in body
+
+
 def test_owner_edit_never_overwritten(tmp_path):
     store = _seed(tmp_path)
     prefs = tmp_path / "vault" / "preferences"

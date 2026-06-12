@@ -26,6 +26,17 @@ system across all seven layers.
 - **Runtime** — FastAPI core (`atlas/server/`), pytest suite, `requirements.txt`,
   `run.sh`. Runs offline with zero model downloads.
 
+### Verify (post-bootstrap review)
+- High-effort code review + strict Section 9 audit run before sign-off.
+- Section 9 audit: items 1–7 DONE; item 8 PARTIAL (canaries 7/10 real, 3 awaiting
+  the Owner interview — see VERSION.json `owner_approval_pending`).
+- Fixed real bugs the happy-path tests missed: `remember` garbled facts on leading
+  whitespace; frontmatter parser mis-detected `---`-prefixed body lines as the
+  delimiter. Both now regression-tested (16 tests green).
+- Cleanups: mtime-cache for vault retrieval (latency path); de-duplicated L4
+  metric extraction; removed a redundant startup Router and dead code; added
+  `POST /api/reload` so the Settings UI can apply config without a restart.
+
 ### Pending Owner approval
 - Identity personality sign-off; real canary answers; first 3 connector installs.
 

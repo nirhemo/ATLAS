@@ -1,4 +1,0 @@
-{"ts": "2026-06-12T23:14:56Z", "role": "system", "text": "ATLAS Cycle Zero bootstrap. Seed episodic transcript.", "session": "s_000", "turn": 0}
-{"ts": "2026-06-12T23:15:10Z", "role": "owner", "text": "Hey Atlas, what's on my calendar tomorrow?", "session": "s_000", "turn": 1}
-{"ts": "2026-06-12T23:15:12Z", "role": "atlas", "text": "No calendar connector is enabled yet, so I can't see your schedule. Want me to set up the calendar connector?", "session": "s_000", "turn": 1, "actions": []}
-{"ts": "2026-06-12T23:31:57Z", "role": "system", "action": "remember", "fact": "demo fact", "entity": "demo", "consolidated": true}
