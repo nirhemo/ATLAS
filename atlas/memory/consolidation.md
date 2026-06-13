@@ -26,9 +26,10 @@ are distilled into the human-readable vault. This is the job that turns
 2. **Distill** — the model extracts durable, vault-worthy facts only. ~60–70% of
    raw conversation is noise (greetings, repair, chit-chat) and is dropped.
    Vault-worthy = people, projects, preferences, decisions, standing facts.
-3. **Verify** — every candidate fact is checked **against the source transcript
-   line** before it is written. Unverifiable or speculative thoughts are
-   discarded. Working memory never leaks guesses into the vault.
+3. **Provenance, not guesses** — only facts the Owner explicitly flagged via the
+   `remember` tool are consolidated, each keeping a back-pointer to the episodic
+   line it came from. ATLAS never invents or infers facts to store; speculation is
+   not written to the vault.
 4. **Route** — for each verified fact, decide:
    - *create* a new note (new entity/topic), or
    - *update* an existing note (new info about a known entity), or
@@ -46,11 +47,16 @@ are distilled into the human-readable vault. This is the job that turns
 10. **Mark** processed lines `consolidated = 1`.
 
 ## Output & versioning
-- The vault is a **git repo**. After a successful run the job auto-commits:
-  `git -C atlas/memory/vault commit -am "consolidation YYYY-MM-DD"`.
-- `git diff` shows exactly what ATLAS learned overnight; `git revert <hash>`
-  cleanly undoes a bad consolidation. This is the L2 hook into Section 2 rollback.
-- A `consolidation_runs` row records counts + the commit hash + status.
+- The vault **can be its own git repo** — run `VaultStore.init_git()` once on
+  deployment. When it is, the job auto-commits after each run
+  (`git -C atlas/memory/vault commit -am "consolidation YYYY-MM-DD"`), so
+  `git diff` shows what ATLAS learned and `git revert <hash>` undoes a bad night
+  (the L2 hook into Section 2 rollback).
+- In the bundled monorepo the vault shares the product repo and the notes are
+  gitignored, so consolidation does **not** commit (it returns `git_commit: null`).
+  Enable standalone-repo mode for full learning history.
+- The returned status dict records notes created/updated, lines processed, notes
+  decayed, the commit hash (or null), and status.
 
 ## Failure / rollback
 - If verification fails for >25% of candidates, or the identity canaries regress

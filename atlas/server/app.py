@@ -586,7 +586,8 @@ async def ws(sock: WebSocket) -> None:
             msg = await sock.receive_json()
             if msg.get("type") == "chat":
                 await sock.send_json({"type": "state", "value": "thinking"})
-                out = router.chat(msg.get("text", ""), channel="voice")
+                out = router.chat(msg.get("text", ""), channel="voice",
+                                  session=msg.get("session", "s_web"))
                 await sock.send_json({"type": "reply", "value": out["reply"]})
                 await sock.send_json({"type": "state", "value": "idle"})
             elif msg.get("type") == "state":

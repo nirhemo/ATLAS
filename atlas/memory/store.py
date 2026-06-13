@@ -13,7 +13,7 @@ import math
 import re
 import subprocess
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -171,14 +171,78 @@ class VaultStore:
         scored.sort(key=lambda x: x[1], reverse=True)
         return scored[:top_k]
 
-    # ----- write -------------------------------------------------------- #
-    def remember(self, fact: str, entity: str | None = None) -> str:
-        """Queue a fact for tonight's consolidation (append to episodic).
+    def context_block(self, max_chars: int = 1800) -> str:
+        """'What you know about your owner', rebuilt every turn for the system
+        prompt: the owner profile, standing preferences, and salient project /
+        decision / topic facts, PLUS any just-stated reminders not yet consolidated
+        (so a `remember X` is honored on the very next turn). Captures both bullet
+        and prose facts, deduped, ordered owner→prefs→rest, capped at max_chars.
+        Empty string if the vault has nothing yet."""
+        notes = self.load_notes()
+        owner = next((n for n in notes
+                      if n.rel.replace("\\", "/") == "people/owner.md"), None)
+        sections: list[str] = []
+        seen: set[str] = set()
 
-        Per the consolidation spec, ATLAS does not scribble speculation straight
-        into long-term memory mid-conversation. The fact is logged; the nightly
-        (or manual) consolidate() pass verifies + writes it to the vault.
-        """
+        if owner:
+            facts = []
+            for f in _facts(owner.body):
+                if f.lower() not in seen:
+                    seen.add(f.lower())
+                    facts.append(f)
+            sections.append(f"Owner: {owner.title}"
+                            + "".join(f"\n- {f}" for f in facts))
+
+        order = {"preference": 0, "project": 1, "decision": 2, "person": 3, "topic": 4}
+        rest = sorted((n for n in notes if n is not owner),
+                      key=lambda n: order.get(n.type, 9))
+        grouped: list[str] = []
+        for n in rest:
+            facts = []
+            for f in _facts(n.body):
+                if f and f.lower() not in seen:
+                    seen.add(f.lower())
+                    facts.append(f)
+            if facts:
+                grouped.append(f"{n.title} ({n.type}):"
+                               + "".join(f"\n- {f}" for f in facts))
+
+        pend = [it.get("fact", "").strip()
+                for it in self._pending_remembers(today_only=True)]
+        pend = [f for f in pend if f and f.lower() not in seen]
+
+        if grouped or pend:
+            body = "\n".join(grouped)
+            if pend:
+                body += ("\n" if body else "") + "Just now:" \
+                        + "".join(f"\n- {f}" for f in pend)
+            sections.append("Standing facts & preferences "
+                            "(honor these in every reply):\n" + body)
+
+        block = "\n\n".join(s for s in sections if s).strip()
+        if len(block) > max_chars:
+            block = block[:max_chars].rstrip() + " …"
+        return block
+
+    # ----- write -------------------------------------------------------- #
+    def _writing_paused(self) -> bool:
+        """Owner kill-switch: when memory.memory_writing_paused is true, ATLAS
+        records nothing new. Honored by remember(), log_turn(), and consolidate()."""
+        try:
+            return bool((cfg.settings().get("memory") or {}).get("memory_writing_paused", False))
+        except Exception:
+            return False
+
+    def remember(self, fact: str, entity: str | None = None) -> str:
+        """Record a fact the Owner explicitly asked ATLAS to remember. Appended to
+        the episodic log immediately (so it's honored from the next turn) and
+        merged into a durable vault note by consolidate(). Only explicitly-flagged
+        facts are stored — never speculation."""
+        if self._writing_paused():
+            return "Memory writing is paused, so I won't store that."
+        fact = (fact or "").strip()
+        if not fact:
+            return "There's nothing to remember."
         line = {
             "ts": _now_iso(), "role": "system", "action": "remember",
             "fact": fact, "entity": entity or "general",
@@ -188,12 +252,76 @@ class VaultStore:
             fh.write(json.dumps(line, ensure_ascii=False) + "\n")
         return f"Noted — I'll remember that ({entity or 'general'})."
 
+    def forget(self, fact: str | None = None, entity: str | None = None) -> str:
+        """Remove or correct a remembered fact. Strips matching bullet lines from
+        the relevant preference note (deleting the note if it empties) and retires
+        any not-yet-consolidated matching reminders so they won't return tonight.
+        Lets the Owner undo wrong or outdated memories."""
+        if self._writing_paused():
+            return "Memory writing is paused."
+        fact_l = (fact or "").strip().lower()
+        if not fact_l and not entity:
+            return "Tell me what to forget (a fact or a topic)."
+        removed = 0
+        prefs_dir = self.vault / "preferences"
+        if entity:
+            slug = re.sub(r"[^a-z0-9]+", "-", entity.lower()).strip("-") or "general"
+            targets = [prefs_dir / f"{slug}.md"]
+        else:
+            targets = sorted(prefs_dir.glob("*.md")) if prefs_dir.is_dir() else []
+        for p in targets:
+            if not p.exists():
+                continue
+            meta, body = _parse_frontmatter(p.read_text(encoding="utf-8"))
+            kept, dropped = [], 0
+            for line in body.splitlines():
+                s = line.strip()
+                if (s.startswith("- ") and not s.startswith("- [[")
+                        and (not fact_l or fact_l in s.lower())):
+                    dropped += 1
+                    continue
+                kept.append(line)
+            if dropped:
+                removed += dropped
+                if any(l.strip().startswith("- ") and not l.strip().startswith("- [[")
+                       for l in kept):
+                    meta["updated"] = date.today().isoformat()
+                    p.write_text(_render_note(meta, "\n".join(kept).rstrip() + "\n"),
+                                 encoding="utf-8")
+                else:
+                    p.unlink()  # no facts left → drop the note
+        # retire matching un-consolidated reminders so tonight won't re-add them
+        for f in sorted(self.episodic.glob("[0-9]*.jsonl")):
+            lines = f.read_text(encoding="utf-8").splitlines()
+            out, changed = [], False
+            for ln in lines:
+                try:
+                    o = json.loads(ln)
+                except json.JSONDecodeError:
+                    out.append(ln)
+                    continue
+                if (o.get("action") == "remember" and not o.get("consolidated")
+                        and (not fact_l or fact_l in o.get("fact", "").lower())
+                        and (not entity or o.get("entity") == entity)):
+                    o["consolidated"], o["forgotten"] = True, True
+                    changed = True
+                    removed += 1
+                out.append(json.dumps(o, ensure_ascii=False))
+            if changed:
+                f.write_text("\n".join(out) + "\n", encoding="utf-8")
+        self._git_commit(f"forget {date.today().isoformat()}")
+        if removed:
+            return f"Done — forgotten ({removed} item{'s' if removed != 1 else ''})."
+        return "I couldn't find a matching memory to forget."
+
     def log_turn(self, *, user: str, reply: str, backend: str,
                  tools: list[str] | None = None, session: str = "s_web",
                  turn: int = 1) -> None:
         """Append one conversation turn to today's episodic transcript so EVERY
         conversation is saved. Consolidation ignores these (action != 'remember').
         Best-effort — never raises into the chat path."""
+        if self._writing_paused():
+            return
         rec = {
             "ts": _now_iso(), "action": "turn", "session": session, "turn": turn,
             "backend": backend, "tools": tools or [], "user": user, "assistant": reply,
@@ -238,9 +366,47 @@ class VaultStore:
                     turns.append(o)
         return turns[-limit:]
 
-    def _pending_remembers(self) -> list[dict[str, Any]]:
+    def history_messages(self, session: str, limit: int = 8) -> list[dict[str, str]]:
+        """Recent (user, assistant) pairs for ONE session, oldest→newest, as chat
+        messages ready to prepend to the next turn — ATLAS's short-term memory.
+        Only complete pairs are returned, so the sequence cleanly alternates
+        user/assistant (required by the model APIs)."""
+        if not session:
+            return []
+        # Read newest date-files first; stop once we have enough turns for this
+        # session (no full-history scan). Older file's turns prepend the newer.
+        collected: list[dict[str, Any]] = []
+        for f in sorted(self.episodic.glob("[0-9]*.jsonl"), reverse=True):
+            recs = []
+            for ln in f.read_text(encoding="utf-8").splitlines():
+                try:
+                    o = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                if o.get("action") == "turn" and o.get("session") == session:
+                    recs.append(o)
+            collected = recs + collected
+            if len(collected) >= limit:
+                break
+        msgs: list[dict[str, str]] = []
+        for t in collected[-limit:]:
+            user = (t.get("user") or "").strip()
+            assistant = (t.get("assistant") or "").strip()
+            if user and assistant:
+                msgs.append({"role": "user", "content": user})
+                msgs.append({"role": "assistant", "content": assistant})
+        return msgs
+
+    def _pending_remembers(self, today_only: bool = False) -> list[dict[str, Any]]:
+        # Date-named files only ('[0-9]*') so the committed example.jsonl can never
+        # be consolidated into the live vault. today_only is the cheap per-turn path.
+        if today_only:
+            f0 = self.episodic / f"{date.today().isoformat()}.jsonl"
+            files = [f0] if f0.exists() else []
+        else:
+            files = sorted(self.episodic.glob("[0-9]*.jsonl"))
         out: list[dict[str, Any]] = []
-        for f in sorted(self.episodic.glob("*.jsonl")):
+        for f in files:
             for ln in f.read_text(encoding="utf-8").splitlines():
                 try:
                     obj = json.loads(ln)
@@ -252,8 +418,12 @@ class VaultStore:
         return out
 
     def consolidate(self) -> dict[str, Any]:
-        """Distill queued 'remember' facts into vault notes. Create/update,
-        respect owner_edited, then git-commit the vault."""
+        """Distill queued 'remember' facts into vault notes: create/update, dedupe
+        exact repeats, respect owner_edited, decay aging notes, then git-commit.
+        No-op (status 'paused') when memory writing is paused."""
+        if self._writing_paused():
+            return {"notes_created": 0, "notes_updated": 0, "lines_processed": 0,
+                    "notes_decayed": 0, "git_commit": None, "status": "paused"}
         pending = self._pending_remembers()
         created = updated = 0
         prefs_dir = self.vault / "preferences"
@@ -265,12 +435,13 @@ class VaultStore:
             note_path = prefs_dir / f"{slug}.md"
             if note_path.exists():
                 meta, body = _parse_frontmatter(note_path.read_text(encoding="utf-8"))
+                if _has_fact(body, fact):
+                    continue                      # dedupe — already recorded
                 if meta.get("owner_edited"):
                     # Never overwrite an Owner edit — append a marked suggestion.
                     body += f"\n\n> ATLAS suggestion ({_now_iso()}): {fact}\n"
                 else:
                     body = body.rstrip() + f"\n- {fact}\n"
-                # The file changed either way → record it so the activity feed shows it.
                 meta["updated"] = date.today().isoformat()
                 note_path.write_text(_render_note(meta, body), encoding="utf-8")
                 updated += 1
@@ -283,17 +454,43 @@ class VaultStore:
                 body = f"# {entity.title()}\n\n- {fact}\n"
                 note_path.write_text(_render_note(meta, body), encoding="utf-8")
                 created += 1
+        decayed = self._decay_stale()
         commit = self._git_commit(f"consolidation {date.today().isoformat()}")
-        # mark consolidated
         self._mark_consolidated()
         return {
             "notes_created": created, "notes_updated": updated,
-            "lines_processed": len(pending), "git_commit": commit,
-            "status": "ok",
+            "lines_processed": len(pending), "notes_decayed": decayed,
+            "git_commit": commit, "status": "ok",
         }
 
+    def _decay_stale(self, step: float = 0.1, floor: float = 0.1) -> int:
+        """Spec §7 (decay, don't delete): lower confidence on aging, non-owner
+        preference notes not updated within memory.decay_days. Returns count."""
+        try:
+            days = int((cfg.settings().get("memory") or {}).get("decay_days", 30))
+        except Exception:
+            days = 30
+        prefs_dir = self.vault / "preferences"
+        if not prefs_dir.is_dir():
+            return 0
+        cutoff = (date.today() - timedelta(days=days)).isoformat()
+        decayed = 0
+        for p in sorted(prefs_dir.glob("*.md")):
+            meta, body = _parse_frontmatter(p.read_text(encoding="utf-8"))
+            if meta.get("owner_edited"):
+                continue
+            updated = str(meta.get("updated", meta.get("created", "")))
+            if updated and updated < cutoff:
+                conf = float(meta.get("confidence", 0.7))
+                new = max(floor, round(conf - step, 2))
+                if new != conf:
+                    meta["confidence"] = new
+                    p.write_text(_render_note(meta, body), encoding="utf-8")
+                    decayed += 1
+        return decayed
+
     def _mark_consolidated(self) -> None:
-        for f in sorted(self.episodic.glob("*.jsonl")):
+        for f in sorted(self.episodic.glob("[0-9]*.jsonl")):
             lines = f.read_text(encoding="utf-8").splitlines()
             changed = False
             out = []
@@ -367,6 +564,31 @@ class VaultStore:
             items.append({"kind": kind, "title": n.title, "ago": updated or "—"})
         items.sort(key=lambda x: x["ago"], reverse=True)
         return items[:limit]
+
+
+def _facts(body: str) -> list[str]:
+    """Durable facts from a note body: '- ' bullets (skipping '[[wiki-link]]'
+    bullets) PLUS meaningful prose lines, so facts written as prose aren't lost.
+    Headings, blockquotes, frontmatter rules, and link-only lines are skipped."""
+    out: list[str] = []
+    for line in body.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith("- ") and not s.startswith("- [["):
+            out.append(s[2:].strip())
+        elif s[0] in "#>-*" or s.startswith("[[") or s == "---":
+            continue          # heading / quote / list-marker / rule / link-only
+        else:
+            out.append(s)     # prose fact
+    return out
+
+
+def _has_fact(body: str, fact: str) -> bool:
+    """True if `fact` is already recorded as a bullet (case-insensitive) — dedup."""
+    f = fact.strip().lower()
+    return any(line.strip()[2:].strip().lower() == f
+               for line in body.splitlines() if line.strip().startswith("- "))
 
 
 def _render_note(meta: dict[str, Any], body: str) -> str:

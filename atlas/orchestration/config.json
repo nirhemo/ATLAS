@@ -27,8 +27,14 @@
     {
       "name": "remember",
       "risk": "WRITE",
-      "description": "Flag a fact to be consolidated into the vault tonight. Does not write speculation; the nightly job verifies against the transcript before storing.",
+      "description": "Record something the Owner asked you to remember (a fact, preference, or standing rule). It takes effect from the next turn and is merged into a durable vault note. Record ONLY what the Owner explicitly states — never speculation. Pass an `entity` to group it (e.g. 'units', 'schedule').",
       "input_schema": { "type": "object", "properties": { "fact": { "type": "string" }, "entity": { "type": "string" } }, "required": ["fact"] }
+    },
+    {
+      "name": "forget",
+      "risk": "WRITE",
+      "description": "Remove or correct something previously remembered. Use when the Owner retracts or changes a preference/fact (e.g. 'forget my old address'), or right after they correct you. Pass the fact text and/or the `entity` it was filed under.",
+      "input_schema": { "type": "object", "properties": { "fact": { "type": "string" }, "entity": { "type": "string" } } }
     },
     {
       "name": "get_time",
