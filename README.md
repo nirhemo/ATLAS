@@ -12,6 +12,7 @@ the **Claude API**.
 > hosted products without AGPL's source-sharing terms — are available from Nir Hemo.
 
 ---
+<img width="1707" height="1289" alt="image" src="https://github.com/user-attachments/assets/db914c3a-34fc-489b-a5b5-58220f7ff73b" />
 
 ## Highlights
 
