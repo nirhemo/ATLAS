@@ -37,6 +37,12 @@
       "input_schema": { "type": "object", "properties": {} }
     },
     {
+      "name": "atlas_status",
+      "risk": "READ",
+      "description": "Introspect ATLAS itself — its 7 layers, scheduled jobs, connectors, current model/routing, memory, version, and capabilities. ALWAYS call this when the Owner asks anything about ATLAS itself (e.g. 'what can you do', 'what are your scheduled jobs', 'which model are you using', 'what connectors do you have', 'what's your status'). Never answer questions about ATLAS from guesswork.",
+      "input_schema": { "type": "object", "properties": { "area": { "type": "string", "enum": ["overview", "scheduler", "connectors", "model", "memory"], "description": "Which subsystem to report on. Default 'overview'." } } }
+    },
+    {
       "name": "calendar_list_events",
       "risk": "READ",
       "connector": "calendar",

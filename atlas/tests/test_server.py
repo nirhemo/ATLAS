@@ -8,8 +8,10 @@ import pytest
 pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient  # noqa: E402
 
-# Force offline mode so the suite never makes a network call.
+# Force offline mode so the suite never makes a network call — independent of
+# the owner's live settings.json (which may select api/local mode).
 os.environ.pop("ANTHROPIC_API_KEY", None)
+os.environ["ATLAS_FORCE_OFFLINE"] = "1"
 # Don't spawn the scheduler thread during tests.
 os.environ["ATLAS_NO_SCHEDULER"] = "1"
 
