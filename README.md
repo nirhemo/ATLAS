@@ -7,9 +7,9 @@ never rebuilt**. Bring your own model: a **free local model**, **OpenRouter**, o
 the **Claude API**.
 
 > **Status:** v0.2.0 · runs offline-degraded out of the box; add a model in the
-> first-run wizard for full reasoning. **Free & source-available** under the
-> [PolyForm Noncommercial License 1.0.0](LICENSE) — free to use, modify, and share
-> for any **non-commercial** purpose; **commercial use is not permitted**.
+> first-run wizard for full reasoning. **Free & open source** under the
+> [GNU AGPL-3.0](LICENSE). **Commercial licenses** — to build closed-source or
+> hosted products without AGPL's source-sharing terms — are available from Nir Hemo.
 
 ---
 
@@ -104,6 +104,18 @@ pytest -q     # 25 tests, fully offline (ATLAS_FORCE_OFFLINE)
 
 PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Keep tests green and offline,
 and never commit per-user state or secrets.
+
+## License
+
+ATLAS is **free and open source** under the
+[GNU Affero General Public License v3.0 or later](LICENSE) (AGPL-3.0-or-later) —
+use, study, modify, and self-host it freely. Because it's AGPL, if you run a
+**modified** ATLAS as a network service you must offer your users the
+corresponding source.
+
+**Commercial license:** to build a **closed-source product** or a **hosted/SaaS
+offering** on ATLAS *without* AGPL's source-disclosure obligations, a separate
+commercial license is available — contact **Nir Hemo**.
 
 ---
 
