@@ -1,5 +1,5 @@
 {
-  "_comment": "ATLAS single source of truth. Both the Owner (via Settings UI) and the AGE edit this file. Every L3 setting maps here.",
+  "_comment": "ATLAS settings template. Copy to settings.json (gitignored) and edit. Both the Owner (via Settings UI) and the AGE edit the real settings.json. Every L3 setting maps here.",
   "version": "0.1.0",
   "general": {
     "owner_name": "Owner",

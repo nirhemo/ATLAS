@@ -18,11 +18,11 @@ Rotated monthly. Answers are checked against the memory vault.
 
 | #  | Question                                              | Expected (placeholder)            | Vault source              |
 |----|------------------------------------------------------|-----------------------------------|---------------------------|
-| 1  | What is my name?                                     | Owner                               | people/nir.md             |
-| 2  | What's the wake word for you?                        | "Hey Atlas"                       | people/nir.md             |
+| 1  | What is my name?                                     | Owner                             | people/owner.md             |
+| 2  | What's the wake word for you?                        | "Hey Atlas"                       | people/owner.md             |
 | 3  | What project are we building together?              | ATLAS                             | projects/atlas.md         |
 | 4  | What hardware do you run on?                         | Mac Mini M4, 24GB                  | projects/atlas.md         |
-| 5  | How do I like my answers — long or short?           | Short, voice-friendly             | people/nir.md             |
+| 5  | How do I like my answers — long or short?           | Short, voice-friendly             | people/owner.md             |
 | 6  | What's your default model backend right now?        | Claude (Sonnet), Phase 1          | projects/atlas.md         |
 | 7  | Which email connector do I use?                     | _to capture in interview_         | preferences/ (tbd)        |
 | 8  | What are my working hours?                          | _to capture in interview_         | preferences/ (tbd)        |

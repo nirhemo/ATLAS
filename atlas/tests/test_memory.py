@@ -8,7 +8,7 @@ def _seed(tmp_path):
     vault = tmp_path / "vault"
     epis = tmp_path / "epis"
     (vault / "people").mkdir(parents=True)
-    (vault / "people" / "nir.md").write_text(
+    (vault / "people" / "owner.md").write_text(
         "---\ntype: person\nconfidence: 0.9\nowner_edited: false\n---\n\n"
         "# Owner\n\n- The Owner of ATLAS.\n- Prefers short, voice-friendly answers.\n",
         encoding="utf-8",

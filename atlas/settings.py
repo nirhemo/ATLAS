@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ATLAS_DIR = REPO_ROOT / "atlas"
 
 SETTINGS_PATH = ATLAS_DIR / "config" / "settings.json"
+SETTINGS_EXAMPLE_PATH = ATLAS_DIR / "config" / "settings.example.json"
 VERSION_PATH = ATLAS_DIR / "VERSION.json"
 ORCH_CONFIG_PATH = ATLAS_DIR / "orchestration" / "config.json"
 REGISTRY_PATH = ATLAS_DIR / "connectors" / "registry.json"
@@ -23,7 +24,10 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def settings() -> dict[str, Any]:
-    return _load_json(SETTINGS_PATH)
+    # settings.json is gitignored (holds owner config). On a fresh clone it
+    # won't exist yet — fall back to the committed template so ATLAS still runs.
+    path = SETTINGS_PATH if SETTINGS_PATH.exists() else SETTINGS_EXAMPLE_PATH
+    return _load_json(path)
 
 
 def reload_settings() -> dict[str, Any]:

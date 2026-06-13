@@ -48,7 +48,7 @@ def test_chat_offline_time():
 
 
 def test_chat_offline_recall(tmp_path):
-    # The seeded vault has a Owner note; offline recall should find it.
+    # The seeded vault has an Owner note; offline recall should find it.
     r = client.post("/api/chat", json={"text": "what is my name?"})
     assert r.status_code == 200
     assert r.json()["reply"]

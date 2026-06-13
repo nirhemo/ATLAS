@@ -18,7 +18,7 @@ PRAGMA foreign_keys = ON;
 -- --------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS notes (
     id              INTEGER PRIMARY KEY,
-    path            TEXT    NOT NULL UNIQUE,      -- e.g. 'people/nir.md'
+    path            TEXT    NOT NULL UNIQUE,      -- e.g. 'people/owner.md'
     title           TEXT    NOT NULL,
     type            TEXT    NOT NULL,             -- person|project|preference|decision|topic
     created         TEXT    NOT NULL,             -- ISO-8601

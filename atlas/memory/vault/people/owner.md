@@ -10,13 +10,12 @@ aliases: [Owner]
 
 # Owner
 
-The **Owner** of ATLAS. ATLAS lives on Owner's Mac Mini M4 (24GB) and serves Owner as
-a general-purpose, voice-first assistant.
+The **Owner** of ATLAS. ATLAS lives on the Owner's Mac Mini M4 (24GB) and serves
+the Owner as a general-purpose, voice-first assistant.
 
-> ⚠️ **Placeholder note.** Created at Cycle Zero from the session context
-> (email `owner@example.com`). Fields below are guesses to demonstrate the format
-> and should be confirmed or corrected in the Owner interview, then set
-> `owner_edited: true`.
+> ⚠️ **Placeholder note.** Created at Cycle Zero as a seed example. Fields below
+> are placeholders to demonstrate the format and should be confirmed or corrected
+> in the Owner interview, then set `owner_edited: true`.
 
 ## Facts
 - Wake word for ATLAS is **"Hey Atlas"**.

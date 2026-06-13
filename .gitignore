@@ -24,5 +24,12 @@ atlas/snapshots/*/
 .env
 *.key
 
+# Owner's live config (holds personal settings). Ship settings.example.json;
+# the loader falls back to it on a fresh clone.
+atlas/config/settings.json
+
+# Local Claude Code session dir
+.claude/
+
 # L8 Scheduler runtime state (last_run / next_run per job)
 atlas/scheduler/state.json

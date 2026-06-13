@@ -41,6 +41,6 @@ Body in plain markdown. Link related notes like [[Project Atlas]].
 - Only the nightly consolidation job writes here (verified facts only).
 - Never write speculation. Decay stale notes' confidence; do not delete.
 
-> The two files alongside this README (`people/nir.md`, `projects/atlas.md`) are
+> The two files alongside this README (`people/owner.md`, `projects/atlas.md`) are
 > **seed examples** created at Cycle Zero to demonstrate the format. Replace or
 > correct them during the Owner interview.
