@@ -8,26 +8,43 @@ Run:  python -m atlas.server     (or ./atlas/run.sh)
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__
 from .. import settings as cfg
 from ..connectors.loader import ConnectorRegistry
-from ..evaluation.logger import metrics_today
+from ..evaluation.logger import log_event, metrics_today, recent_events
 from ..memory.store import VaultStore
-from ..orchestration.router import Router
+from ..orchestration.router import Router, keychain_secret
 from ..scheduler import Scheduler
 
 WEB_DIR = cfg.ATLAS_DIR / "interface" / "web"
 _START = time.monotonic()
+
+# Selectable Claude API models for the Settings dropdown (id -> label).
+CLAUDE_MODELS = [
+    {"id": "claude-opus-4-8", "label": "Claude Opus 4.8 (most capable)"},
+    {"id": "claude-sonnet-4-6", "label": "Claude Sonnet 4.6 (balanced)"},
+    {"id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5 (fast)"},
+    {"id": "claude-fable-5", "label": "Claude Fable 5"},
+]
+
+# Popular OpenRouter model ids — datalist suggestions only. The ↻ button live-
+# fetches the authoritative list from the gateway (/api/openrouter/models).
+OPENROUTER_MODELS = [
+    "openai/gpt-5", "openai/gpt-5-mini", "anthropic/claude-sonnet-4.6",
+    "anthropic/claude-opus-4.8", "google/gemini-2.5-pro", "google/gemini-2.5-flash",
+    "deepseek/deepseek-chat", "meta-llama/llama-4-maverick",
+]
 
 
 def _scheduler_enabled() -> bool:
@@ -39,7 +56,11 @@ def _scheduler_enabled() -> bool:
 async def lifespan(_app: FastAPI):
     if _scheduler_enabled():
         scheduler.start()
+    log_event("startup", {"mode": cfg.settings()["model"].get("mode", "api"),
+                          "backend": router.backend,
+                          "scheduler": _scheduler_enabled()})
     yield
+    log_event("shutdown", {})
     scheduler.stop()
 
 
@@ -65,17 +86,19 @@ def _uptime() -> str:
 
 
 def _ram() -> tuple[float, float]:
-    """(used_gb, total_gb). Reads /proc/meminfo on Linux; falls back gracefully."""
+    """(used_gb, total_gb) — LIVE, cross-platform via psutil (works on macOS).
+    'used' = total − available (the standard pressure gauge), so it tracks real
+    usage including the local model when loaded."""
     try:
-        info: dict[str, int] = {}
-        for line in Path("/proc/meminfo").read_text().splitlines():
-            k, _, v = line.partition(":")
-            info[k.strip()] = int(v.strip().split()[0])  # kB
-        total = info["MemTotal"] / 1024 / 1024
-        avail = info.get("MemAvailable", info.get("MemFree", 0)) / 1024 / 1024
-        return round(total - avail, 1), round(total, 1)
+        import psutil
+        m = psutil.virtual_memory()
+        return round((m.total - m.available) / 1024**3, 1), round(m.total / 1024**3, 1)
     except Exception:
-        return 6.2, 24.0
+        try:  # last-resort: total from sysconf, used unknown
+            total = os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") / 1024**3
+            return round(total * 0.5, 1), round(total, 1)
+        except Exception:
+            return 0.0, 0.0
 
 
 # --------------------------------------------------------------------------- #
@@ -87,7 +110,8 @@ def status() -> dict[str, Any]:
     used, total = _ram()
     return {
         "version": v.get("version", __version__),
-        "backend": router.backend,
+        "backend": router.status_label(),
+        "routing": router.routing_enabled,
         "uptime": _uptime(),
         "ram_used_gb": used,
         "ram_total_gb": total,
@@ -149,13 +173,11 @@ def scheduler_run(job_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"no such job: {job_id}")
 
 
-@app.post("/api/reload")
-def reload_config() -> dict[str, Any]:
-    """Re-read settings/registry and rebuild the core singletons. Lets the
-    Settings UI apply changes (e.g. a newly-approved connector, a model-backend
-    switch) without restarting the process."""
+def _rebuild_core() -> None:
+    """Rebuild the core singletons from the current settings/registry. Used by
+    both /api/reload and a settings save, so a model-backend switch or newly
+    approved connector applies without restarting the process."""
     global router, vault, registry, scheduler
-    cfg.reload_settings()
     router = Router()
     vault = VaultStore()
     registry = ConnectorRegistry()
@@ -163,8 +185,224 @@ def reload_config() -> dict[str, Any]:
     scheduler = Scheduler()
     if _scheduler_enabled():
         scheduler.start()
+    log_event("core_rebuilt", {"mode": cfg.settings()["model"].get("mode", "api"),
+                               "backend": router.backend})
+
+
+@app.post("/api/reload")
+def reload_config() -> dict[str, Any]:
+    """Re-read settings/registry and rebuild the core singletons."""
+    cfg.reload_settings()
+    _rebuild_core()
+    log_event("reload", {"backend": router.backend})
     return {"reloaded": True, "backend": router.backend,
             "connectors_installed": list(registry.installed_ids())}
+
+
+@app.get("/api/settings")
+def get_settings() -> dict[str, Any]:
+    """The live settings the Owner UI edits (settings.json, or the bundled
+    example on a fresh clone)."""
+    return cfg.settings()
+
+
+def _dig(d: Any, *path: str) -> Any:
+    for k in path:
+        d = (d or {}).get(k) if isinstance(d, dict) else None
+    return d
+
+
+@app.put("/api/settings")
+def put_settings(body: dict[str, Any]) -> dict[str, Any]:
+    """Persist the full settings object, then rebuild the core so it takes
+    effect immediately. Writes settings.json (gitignored owner config).
+    Logs exactly which model/mode fields changed so every change is trackable."""
+    old = cfg.settings()
+    try:
+        cfg.save_settings(body)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    _rebuild_core()
+    tracked = {
+        "mode": ("model", "mode"), "api_model": ("model", "backend"),
+        "escalation_model": ("model", "escalation_model"),
+        "openrouter_model": ("model", "openrouter", "model"),
+        "local_model": ("model", "local", "model"),
+        "max_tokens": ("model", "max_tokens"), "temperature": ("model", "temperature"),
+        "owner_name": ("general", "owner_name"),
+    }
+    changes = {k: {"from": _dig(old, *p), "to": _dig(body, *p)}
+               for k, p in tracked.items() if _dig(old, *p) != _dig(body, *p)}
+    if changes:
+        log_event("config_change", {"changes": changes, "backend": router.backend})
+    return {"saved": True, "backend": router.backend, "changed": list(changes)}
+
+
+@app.get("/api/conversation")
+def conversation(limit: int = 30) -> list[dict[str, Any]]:
+    """Recent saved conversation turns (oldest→newest) — powers chat history."""
+    return vault.recent_turns(max(1, min(limit, 200)))
+
+
+@app.get("/api/credits")
+def credits() -> dict[str, Any]:
+    """OpenRouter credit balance (remaining = granted − used). {available:false}
+    if no key or unreachable."""
+    import httpx
+    orc = cfg.settings()["model"].get("openrouter") or {}
+    key = os.environ.get(orc.get("api_key_env", "OPENROUTER_API_KEY")) \
+        or keychain_secret(orc.get("api_key_ref"))
+    if not key:
+        return {"available": False}
+    try:
+        r = httpx.get("https://openrouter.ai/api/v1/credits",
+                      headers={"Authorization": f"Bearer {key}"}, timeout=5.0)
+        r.raise_for_status()
+        d = r.json().get("data", {})
+        total, usage = d.get("total_credits") or 0, d.get("total_usage") or 0
+        return {"available": True, "remaining": round(total - usage, 2),
+                "total": total, "usage": round(usage, 4)}
+    except Exception:
+        return {"available": False}
+
+
+class TTSIn(BaseModel):
+    text: str
+    voice: str | None = None
+
+
+@app.post("/api/tts")
+def tts(body: TTSIn) -> Response:
+    """Synthesize speech locally (Kokoro). Returns WAV; 503 if the local voice
+    isn't installed (the browser then falls back to its OS Web Speech voice)."""
+    from ..interface.voice import tts as tts_engine
+    cfg_voice = (cfg.settings().get("voice", {}) or {}).get("tts_voice", "kokoro:bm_george")
+    voice = body.voice or (cfg_voice.split(":", 1)[1] if ":" in cfg_voice else "bm_george")
+    wav = tts_engine.synth(body.text, voice=voice)
+    if not wav:
+        raise HTTPException(status_code=503, detail="local TTS unavailable")
+    return Response(content=wav, media_type="audio/wav")
+
+
+@app.get("/api/logs")
+def logs(limit: int = 200) -> list[dict[str, Any]]:
+    """Recent structured events for the Logs drawer (oldest→newest)."""
+    return recent_events(max(1, min(limit, 1000)))
+
+
+@app.post("/api/backend/test")
+def backend_test() -> dict[str, Any]:
+    """Check whether the model backend is actually reachable. Sends a 1-token
+    ping to Claude if a client is configured; otherwise reports offline."""
+    key_env = cfg.settings()["model"].get("api_key_env", "ANTHROPIC_API_KEY")
+    key_present = bool(os.environ.get(key_env))
+    if router._client is None:
+        return {"ok": False, "key_present": key_present, "backend": "offline",
+                "detail": "No model client — set %s and reload." % key_env}
+    try:
+        router._client.messages.create(
+            model=cfg.settings()["model"].get("backend", "claude-sonnet-4-6"),
+            max_tokens=1, messages=[{"role": "user", "content": "ping"}],
+        )
+        return {"ok": True, "key_present": True, "backend": router.backend,
+                "detail": "Claude reachable — full reasoning is live."}
+    except Exception as exc:  # network / auth / model error
+        return {"ok": False, "key_present": key_present, "backend": router.backend,
+                "detail": "Backend error: %s" % type(exc).__name__}
+
+
+@app.get("/api/models")
+def models() -> dict[str, Any]:
+    """Everything the Settings model picker needs: the selectable API models +
+    whether a key is present, and a LIVE probe of the configured local server
+    (its /v1/models is the 'fetch the local model that's running')."""
+    import httpx
+    m = cfg.settings()["model"]
+    key_env = m.get("api_key_env", "ANTHROPIC_API_KEY")
+    key_present = bool(os.environ.get(key_env) or keychain_secret(m.get("api_key_ref")))
+
+    local_cfg = m.get("local") or {}
+    endpoint = (local_cfg.get("endpoint") or "http://localhost:8080/v1").rstrip("/")
+    running, local_models = False, []
+    try:
+        r = httpx.get(f"{endpoint}/models", timeout=1.5)
+        if r.status_code == 200:
+            running = True
+            local_models = [d.get("id") for d in r.json().get("data", []) if d.get("id")]
+    except Exception:
+        pass
+
+    orc = m.get("openrouter") or {}
+    or_key_present = bool(os.environ.get(orc.get("api_key_env", "OPENROUTER_API_KEY"))
+                          or keychain_secret(orc.get("api_key_ref")))
+
+    return {
+        "mode": m.get("mode", "api"),
+        "api": {"models": CLAUDE_MODELS, "active": m.get("backend"),
+                "escalation": m.get("escalation_model"), "key_present": key_present,
+                "key_env": key_env},
+        "openrouter": {"endpoint": orc.get("endpoint", "https://openrouter.ai/api/v1"),
+                       "active": orc.get("model"), "key_present": or_key_present,
+                       "key_env": orc.get("api_key_env", "OPENROUTER_API_KEY"),
+                       "models": OPENROUTER_MODELS},
+        "local": {"endpoint": endpoint, "active": local_cfg.get("model"),
+                  "running": running, "models": local_models},
+    }
+
+
+@app.get("/api/openrouter/models")
+def openrouter_models() -> dict[str, Any]:
+    """Live-fetch the authoritative model list from the OpenRouter gateway
+    (no key needed for the catalog) to populate the Settings suggestions."""
+    import httpx
+    orc = cfg.settings()["model"].get("openrouter") or {}
+    ep = (orc.get("endpoint") or "https://openrouter.ai/api/v1").rstrip("/")
+    try:
+        r = httpx.get(f"{ep}/models", timeout=8.0)
+        r.raise_for_status()
+        ids = sorted(d.get("id") for d in r.json().get("data", []) if d.get("id"))
+        return {"ok": True, "count": len(ids), "models": ids}
+    except Exception as exc:
+        return {"ok": False, "models": [], "detail": type(exc).__name__}
+
+
+class SecretIn(BaseModel):
+    key: str
+
+
+def _secret_target(provider: str) -> tuple[str, str]:
+    """(keychain_ref, env_var) for a provider's API key, from settings."""
+    m = cfg.settings()["model"]
+    if provider == "anthropic":
+        return (m.get("api_key_ref", "keychain:atlas-anthropic-api-key"),
+                m.get("api_key_env", "ANTHROPIC_API_KEY"))
+    if provider == "openrouter":
+        orc = m.get("openrouter") or {}
+        return (orc.get("api_key_ref", "keychain:atlas-openrouter-api-key"),
+                orc.get("api_key_env", "OPENROUTER_API_KEY"))
+    raise HTTPException(status_code=404, detail=f"unknown secret provider: {provider}")
+
+
+@app.post("/api/secret/{provider}")
+def set_secret(provider: str, body: SecretIn) -> dict[str, Any]:
+    """Store a provider's API key in the macOS Keychain (never in settings.json
+    or git) AND activate it for this process, then rebuild the core so the
+    backend comes online without a restart. provider ∈ {anthropic, openrouter}."""
+    key = body.key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="empty key")
+    ref, env = _secret_target(provider)
+    name = ref.split(":", 1)[1] if ref.startswith("keychain:") else f"atlas-{provider}-api-key"
+    try:
+        subprocess.run(["security", "add-generic-password", "-U", "-s", name,
+                        "-a", "atlas", "-w", key], check=True, capture_output=True, timeout=10)
+        stored = True
+    except (OSError, subprocess.SubprocessError):
+        stored = False  # off-macOS or no Keychain — still activate via env below
+    os.environ[env] = key
+    _rebuild_core()
+    log_event("secret_set", {"provider": provider, "stored_in_keychain": stored})
+    return {"stored_in_keychain": stored, "backend": router.backend}
 
 
 # --------------------------------------------------------------------------- #
