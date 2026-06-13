@@ -29,6 +29,17 @@ def test_status_ok():
     assert body["ram_total_gb"] > 0
 
 
+def test_version_prefers_git_tags_with_fallback():
+    # The displayed version is git-tag derived when available, else VERSION.json.
+    from atlas import settings as cfg
+    v = cfg.version()
+    assert isinstance(v.get("version"), str) and v["version"]   # always non-empty
+    gv = cfg.git_version()
+    assert gv is None or isinstance(gv, str)                    # describe string or fallback
+    if gv:
+        assert v["version"] == gv.lstrip("v")
+
+
 def test_metrics_shape():
     r = client.get("/api/metrics")
     assert r.status_code == 200

@@ -52,7 +52,7 @@ def _branch() -> str:
 
 def _version() -> str:
     try:
-        return json.loads(cfg.VERSION_PATH.read_text(encoding="utf-8")).get("version", "?")
+        return cfg.version().get("version", "?")   # git-tag-derived, VERSION.json fallback
     except Exception:
         return "?"
 
