@@ -35,6 +35,19 @@ def reload_settings() -> dict[str, Any]:
     return settings()
 
 
+def save_settings(data: dict[str, Any]) -> dict[str, Any]:
+    """Persist the owner's settings to settings.json (creating it on first save,
+    even on a fresh clone that was running off settings.example.json) and refresh
+    the in-process cache. Written pretty-printed so it stays human-editable."""
+    if not isinstance(data, dict):
+        raise ValueError("settings payload must be a JSON object")
+    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with SETTINGS_PATH.open("w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2, ensure_ascii=False)
+        fh.write("\n")
+    return reload_settings()
+
+
 def version() -> dict[str, Any]:
     return _load_json(VERSION_PATH)
 

@@ -77,6 +77,21 @@ def metrics_today() -> dict[str, Any]:
     }
 
 
+def recent_events(limit: int = 200) -> list[dict[str, Any]]:
+    """Most recent `limit` log events for the Logs drawer, oldest→newest.
+    Reads today and spills into prior days only as far as needed."""
+    out: list[dict[str, Any]] = []
+    d = date.today()
+    # Walk back day-by-day until we have enough (cap at 7 days to bound work).
+    for _ in range(7):
+        day_events = _read_day(d.isoformat())
+        out = day_events + out
+        if len(out) >= limit:
+            break
+        d = date.fromordinal(d.toordinal() - 1)
+    return out[-limit:]
+
+
 def health_report(day: str | None = None) -> dict[str, Any]:
     """Compute the daily health report (Section 4) and log it."""
     d = day or date.today().isoformat()

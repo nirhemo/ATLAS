@@ -188,6 +188,37 @@ class VaultStore:
             fh.write(json.dumps(line, ensure_ascii=False) + "\n")
         return f"Noted — I'll remember that ({entity or 'general'})."
 
+    def log_turn(self, *, user: str, reply: str, backend: str,
+                 tools: list[str] | None = None, session: str = "s_web",
+                 turn: int = 1) -> None:
+        """Append one conversation turn to today's episodic transcript so EVERY
+        conversation is saved. Consolidation ignores these (action != 'remember').
+        Best-effort — never raises into the chat path."""
+        rec = {
+            "ts": _now_iso(), "action": "turn", "session": session, "turn": turn,
+            "backend": backend, "tools": tools or [], "user": user, "assistant": reply,
+        }
+        f = self.episodic / f"{date.today().isoformat()}.jsonl"
+        try:
+            with f.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+    def recent_turns(self, limit: int = 30) -> list[dict[str, Any]]:
+        """Most recent conversation turns across date-named episodic files,
+        oldest→newest — powers persistent chat history."""
+        turns: list[dict[str, Any]] = []
+        for f in sorted(self.episodic.glob("[0-9]*.jsonl")):
+            for ln in f.read_text(encoding="utf-8").splitlines():
+                try:
+                    o = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                if o.get("action") == "turn":
+                    turns.append(o)
+        return turns[-limit:]
+
     def _pending_remembers(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for f in sorted(self.episodic.glob("*.jsonl")):
