@@ -7,7 +7,9 @@ never rebuilt**. Bring your own model: a **free local model**, **OpenRouter**, o
 the **Claude API**.
 
 > **Status:** v0.2.0 · runs offline-degraded out of the box; add a model in the
-> first-run wizard for full reasoning. Open-source under the [MIT License](LICENSE).
+> first-run wizard for full reasoning. **Source-available** under the
+> [PolyForm Noncommercial License 1.0.0](LICENSE) — free for non-commercial use;
+> **commercial licensing available from Nir Hemo**.
 
 ---
 
@@ -23,8 +25,8 @@ the **Claude API**.
   a balanced one, *daily* questions → a cheap/free one — per turn, no extra latency.
 - 🔎 **Grounded answers** — every factual question goes through **web search** (or
   memory) and is cited; ATLAS never answers from stale model memory.
-- 💾 **Real memory** — an Obsidian-style vault plus saved conversation history,
-  with nightly consolidation.
+- 💾 **Real memory** — **MemVault**, a local Markdown memory vault (linked notes
+  + YAML frontmatter), plus saved conversation history and nightly consolidation.
 - 🔁 **Self-updater** — pulls new code from GitHub safely: backup → atomic apply →
   health-check → auto-rollback. **Your data and settings are never touched** — only
   capabilities update.

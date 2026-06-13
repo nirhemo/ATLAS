@@ -1,8 +1,9 @@
-# ATLAS Memory Vault
+# MemVault — ATLAS's Memory Vault
 
-This directory **is** ATLAS's long-term memory — the source of truth (L2).
-It is an **Obsidian-compatible** markdown vault: open it in Obsidian and you are
-browsing ATLAS's brain directly.
+This directory **is** ATLAS's long-term memory — the source of truth (L2). We call
+it **MemVault**: a plain-Markdown knowledge vault (linked notes + YAML
+frontmatter). It's also **Obsidian-compatible**, so you can open it in Obsidian (or
+any Markdown editor) and browse ATLAS's brain directly.
 
 ## Layout
 - `people/` — one note per person.

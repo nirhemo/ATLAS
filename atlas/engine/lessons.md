@@ -12,7 +12,7 @@ First light. Built ATLAS from the meta-prompt as a *running* system, not just
 specs: seven layers laid down with real, loadable artifacts (identity, vault,
 schema, configs, logging, orchestration, connectors) and a working FastAPI core
 that serves the dark HUD, talks to Claude with an offline fallback, reads/writes
-the Obsidian-style vault, and logs every interaction as JSONL. Two lessons worth
+MemVault (the Markdown memory vault), and logs every interaction as JSONL. Two lessons worth
 keeping. First — **make the source-of-truth files real and machine-loadable from
 day one** (settings.json, registry.json, the canaries as JSON), so the Owner UI
 and the engine genuinely share one source rather than drifting docs. Second —

@@ -22,7 +22,7 @@ is *upgraded forever, never rebuilt*.
   local. → Phase 2 hybrid local Gemma. → Phase 3 local-first.
 
 ## Key decisions
-- See [[Memory is an Obsidian-style vault]] and [[Voice stack choice]].
+- See [[Memory is MemVault, a Markdown vault]] and [[Voice stack choice]].
 
 ## Owner
 - [[Owner]]

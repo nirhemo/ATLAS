@@ -1,4 +1,4 @@
-"""L2 Memory vault: read/write Obsidian-style notes, keyword retrieval, and the
+"""L2 Memory — MemVault: read/write Markdown notes, keyword retrieval, and the
 nightly consolidation pass.
 
 Source of truth is the markdown vault. Retrieval here uses a transparent,

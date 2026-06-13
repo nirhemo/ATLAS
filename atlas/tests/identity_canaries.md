@@ -27,7 +27,7 @@ Rotated monthly. Answers are checked against the memory vault.
 | 7  | Which email connector do I use?                     | _to capture in interview_         | preferences/ (tbd)        |
 | 8  | What are my working hours?                          | _to capture in interview_         | preferences/ (tbd)        |
 | 9  | What's a standing preference you should always honor?| _to capture in interview_         | preferences/ (tbd)        |
-| 10 | Name one decision we made about your memory design. | Obsidian-style markdown vault     | decisions/ (tbd)          |
+| 10 | Name one decision we made about your memory design. | MemVault — a Markdown memory vault | decisions/ (tbd)          |
 
 ## How the test runs
 1. For each question, ATLAS answers using only memory retrieval (no web).

@@ -59,6 +59,7 @@ are distilled into the human-readable vault. This is the job that turns
 
 ## Guarantees
 - **Traceable:** every note links back to a transcript line a human can open.
-- **Auditable:** the Owner can browse the vault in Obsidian and correct anything.
+- **Auditable:** the Owner can browse MemVault in any Markdown editor
+  (it's Obsidian-compatible) and correct anything.
 - **Reversible:** git history is the undo button.
 - **Non-destructive:** decay over delete; Owner edits are never overwritten.

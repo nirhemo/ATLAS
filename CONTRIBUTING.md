@@ -36,5 +36,21 @@ and download the model files into `atlas/interface/voice/models/` (see
 2. Run `pytest -q` (and, for UI changes, sanity-check the HUD at `localhost:8765`).
 3. Describe what changed and why; link any related issue.
 
-By contributing you agree your work is licensed under the project's
-[MIT License](LICENSE).
+## Licensing of contributions
+
+ATLAS is **source-available** under the
+[PolyForm Noncommercial License 1.0.0](LICENSE) — free to use, modify, and share
+for non-commercial purposes. Commercial licenses are offered separately by the
+maintainer, **Nir Hemo**.
+
+By submitting a contribution, you agree that:
+
+- your contribution is licensed to the project under the **PolyForm Noncommercial
+  License**, and
+- you grant the maintainer (**Nir Hemo**) a perpetual, worldwide, irrevocable,
+  royalty-free right to use, reproduce, modify, and **relicense your contribution —
+  including under commercial terms** — so ATLAS can be offered under commercial
+  licenses alongside the noncommercial one.
+
+(This is a lightweight inbound license grant, not legal advice. If you can't agree
+to it, please open an issue to discuss before submitting code.)

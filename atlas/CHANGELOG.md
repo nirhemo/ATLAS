@@ -39,7 +39,7 @@ system across all seven layers.
 ### Added
 - **L1 Core Identity** — `core/identity.md` v1.0 (calm, capable, voice-first,
   general-purpose; safety + memory + continuity contracts). *Pending Owner sign-off.*
-- **L2 Memory** — Obsidian-style markdown vault (`memory/vault/`) with seed notes,
+- **L2 Memory** — MemVault, a Markdown memory vault (`memory/vault/`) with seed notes,
   SQLite + sqlite-vec schema (`memory/schema.sql`), vector-store config, nightly
   consolidation spec, and append-only episodic cold storage.
 - **L3 Interface** — voice pipeline contract (openWakeWord → silero-vad →

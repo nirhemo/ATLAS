@@ -11,6 +11,6 @@
     { "id": 7,  "q": "Which email connector do I use?",                 "expected": [],                               "source": "preferences/tbd",   "placeholder": true },
     { "id": 8,  "q": "What are my working hours?",                      "expected": [],                               "source": "preferences/tbd",   "placeholder": true },
     { "id": 9,  "q": "Name a standing preference you should honor.",    "expected": [],                               "source": "preferences/tbd",   "placeholder": true },
-    { "id": 10, "q": "Name one decision about your memory design.",     "expected": ["vault", "markdown", "Obsidian"],"source": "decisions/tbd",     "placeholder": false }
+    { "id": 10, "q": "Name one decision about your memory design.",     "expected": ["vault", "markdown", "MemVault"],"source": "decisions/tbd",     "placeholder": false }
   ]
 }
