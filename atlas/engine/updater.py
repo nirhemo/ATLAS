@@ -131,6 +131,7 @@ def apply(confirm: bool = False) -> dict[str, Any]:
     reset = _git("reset", "--hard", f"origin/{branch}")
     if reset.returncode != 0:
         return {"ok": False, "detail": "git reset failed: " + reset.stderr.strip()}
+    cfg.git_version.cache_clear()   # version is git-derived — report the new tag, not the cached one
 
     # Reinstall deps only if requirements changed.
     if "requirements.txt" in _git("diff", "--name-only", f"{rollback_point}..HEAD").stdout:
@@ -140,6 +141,7 @@ def apply(confirm: bool = False) -> dict[str, Any]:
     ok, detail = _health_check()
     if not ok:
         _git("reset", "--hard", rollback_point)   # roll back code; user data was never touched
+        cfg.git_version.cache_clear()
         log_event("update_rolled_back", {"reason": detail, "restored_to": rollback_point[:9]})
         return {"ok": False, "applied": False, "rolled_back": True,
                 "detail": f"Health check failed ({detail or 'tests failed'}) — rolled back, nothing lost."}
