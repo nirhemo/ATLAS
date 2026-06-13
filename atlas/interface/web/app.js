@@ -68,6 +68,34 @@ async function renderStatus() {
   setText(root, "ram", `${s.ram_used_gb.toFixed(1)} / ${s.ram_total_gb} GB`);
   $("#ramBar").style.width = `${Math.round((s.ram_used_gb / s.ram_total_gb) * 100)}%`;
 }
+async function renderUpdate() {
+  const box = $("#updBox"); if (!box) return;
+  const d = await getJSON("/api/update/check");
+  if (!d || !d.ok) { box.innerHTML = `<span class="muted small">${(d && d.detail) || "update check unavailable"}</span>`; return; }
+  if (!d.update_available) {
+    box.innerHTML = `<span class="status-pill ok">up to date</span> <span class="muted small">v${d.current_version} · ${d.current_commit}</span>`;
+    return;
+  }
+  box.innerHTML = `<span class="status-pill warn">update available</span> <span class="muted small">${d.behind} new commit(s)</span> <button class="navbtn small" id="updBtn">⬆ Update</button>`;
+  $("#updBtn").addEventListener("click", async () => {
+    const btn = $("#updBtn"); btn.disabled = true; btn.textContent = "updating…";
+    toast("Updating — backing up your data & health-checking…");
+    try {
+      const r = await fetch(API + "/api/update/apply?confirm=true", { method: "POST", signal: AbortSignal.timeout(600000) });
+      const res = await r.json();
+      if (res.applied) {
+        toast(`Updated to v${res.to_version} — restart ATLAS to load it`, "ok");
+        box.innerHTML = `<span class="status-pill ok">updated</span> <span class="muted small">restart to load v${res.to_version}</span>`;
+      } else if (res.rolled_back) {
+        toast("Update failed health check — rolled back, nothing lost", "err");
+        btn.disabled = false; btn.textContent = "⬆ Update";
+      } else {
+        toast(res.detail || "update did not apply", "err");
+        btn.disabled = false; btn.textContent = "⬆ Update";
+      }
+    } catch { toast("Update error — see logs", "err"); btn.disabled = false; btn.textContent = "⬆ Update"; }
+  });
+}
 async function renderCredits() {
   const el = $('#systemStatus [data-k="credits"]'); if (!el) return;
   const c = await getJSON("/api/credits");
@@ -138,6 +166,7 @@ async function renderUpgrade() {
   const u = await getJSON("/api/upgrade");
   const root = $("#upgrade");
   if (!u) { ["last_cycle", "last_change", "next_cycle", "approval"].forEach(k => setText(root, k, "—")); return; }
+  renderUpdate();
   setText(root, "last_cycle", u.last_cycle);
   setText(root, "last_change", u.last_change);
   setText(root, "next_cycle", humanDate(u.next_cycle));

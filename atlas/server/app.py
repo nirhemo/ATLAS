@@ -332,6 +332,21 @@ def approve_connector(body: ApproveIn) -> dict[str, Any]:
     return {"approved": body.id, "installed": [c["id"] for c in reg["installed"]]}
 
 
+@app.get("/api/update/check")
+def update_check() -> dict[str, Any]:
+    """How far behind GitHub the running code is, with a changelog."""
+    from ..engine.updater import check
+    return check()
+
+
+@app.post("/api/update/apply")
+def update_apply(confirm: bool = False) -> dict[str, Any]:
+    """Apply the update (confirm=true). Backs up user state, applies atomically,
+    health-checks, and auto-rolls-back on failure. Owner data is never touched."""
+    from ..engine.updater import apply
+    return apply(confirm=confirm)
+
+
 @app.get("/api/voice/status")
 def voice_status() -> dict[str, Any]:
     from ..interface.voice import tts as tts_engine

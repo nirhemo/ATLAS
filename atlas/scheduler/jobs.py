@@ -103,17 +103,19 @@ def purge_episodic() -> dict[str, Any]:
 
 
 def run_upgrade_cycle() -> dict[str, Any]:
-    """Trigger an AGE upgrade cycle (Section 3).
-
-    The automated cycle runner isn't built yet, so this honestly records that a
-    cycle is due rather than pretending to run one. When the AGE runner lands,
-    swap the body here — the schedule wiring already works.
-    """
+    """Nightly cycle (Section 3): check git for new ATLAS code and record whether
+    an update is available. Applying is owner-gated (the HUD's Update button) —
+    we never auto-apply unattended."""
+    from ..engine.updater import check
+    info = check()
     log_event("upgrade", {
-        "status": "due",
-        "note": "AGE automated cycle runner not yet implemented; run on demand.",
+        "status": "checked",
+        "update_available": info.get("update_available", False),
+        "behind": info.get("behind", 0),
+        "current_version": info.get("current_version"),
     })
-    return {"status": "due", "note": "logged — run the cycle manually for now."}
+    return {"status": "checked", "update_available": info.get("update_available", False),
+            "behind": info.get("behind", 0)}
 
 
 def default_handlers() -> dict[str, Callable[[], Any]]:
