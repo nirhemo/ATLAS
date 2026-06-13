@@ -20,6 +20,9 @@ atlas/memory/episodic/[0-9]*.jsonl
 atlas/snapshots/*/
 !atlas/snapshots/.gitkeep
 
+# Local neural-TTS model files (~335MB, downloaded — see interface/voice/tts.py)
+atlas/interface/voice/models/
+
 # Secrets must never be committed (Section 8 — Keychain only)
 .env
 *.key

@@ -2,6 +2,7 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
 pydantic>=2.6
+psutil>=5.9            # live system memory on macOS/Linux (System panel)
 anthropic>=0.40        # optional at runtime — offline mode works without a key
 httpx>=0.27            # used by the test client
 
@@ -11,5 +12,10 @@ pytest>=8.0
 # --- Documented but NOT required for Cycle 0 (zero-download offline run) ---
 # Memory embeddings upgrade (Cycle 1): sqlite-vec, onnxruntime, a local
 #   embedding model (bge-small-en-v1.5). Until then retrieval is keyword-based.
-# Voice pipeline (real hardware): openwakeword, silero-vad, whisper.cpp bindings,
-#   kokoro-onnx / piper-tts. These need a mic + speakers, not present in CI.
+# Voice — local neural TTS (clean on-device voice). Optional: ATLAS falls back to
+#   the browser's OS voice if these (or the model files) are absent.
+#     pip install kokoro-onnx soundfile "misaki[en]"
+#   then download kokoro-v1.0.onnx + voices-v1.0.bin into
+#   atlas/interface/voice/models/ (github.com/thewh1teagle/kokoro-onnx releases).
+# STT / wake word (real hardware): browser Web Speech today; openwakeword,
+#   silero-vad, whisper.cpp later. These need a mic, not present in CI.
