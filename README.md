@@ -1,80 +1,108 @@
 # ATLAS — Automated Task & Logic Assistant System
 
-A persistent, voice-first, general-purpose AI assistant that lives on a Mac Mini
-M4 (24GB) and is **upgraded forever, never rebuilt**. Built by the ATLAS Genesis
-Engine (AGE) from the meta-prompt in `atlasmetaprompt.md`.
+A **persistent, voice-first, local-first** personal assistant that lives on your
+Mac. Talk to it ("Hey Atlas"), and it answers in a clean neural voice, remembers
+what matters, searches the web for live facts, and upgrades itself — **forever,
+never rebuilt**. Bring your own model: a **free local model**, **OpenRouter**, or
+the **Claude API**.
 
-> **Status:** Cycle 0 bootstrap complete — a runnable core across all 7 layers.
-> Runs **offline with zero model downloads**; add an API key for full reasoning.
+> **Status:** v0.2.0 · runs offline-degraded out of the box; add a model in the
+> first-run wizard for full reasoning. Open-source under the [MIT License](LICENSE).
+
+---
+
+## Highlights
+
+- 🟦 **Voice-first HUD** — a dark, futuristic dashboard with a central voice orb,
+  wake-word listening, a fluent back-and-forth conversation loop, a floating chat,
+  a live logs drawer, and a working settings panel.
+- 🗣️ **Clean neural voice** — on-device **Kokoro** TTS (no cloud, no key), with a
+  graceful fall back to the browser voice. Speaks like a person, not a document.
+- 🧠 **Bring-your-own-model + task routing** — Local (MLX), OpenRouter, or Claude
+  API. Optional **smart routing** sends *code* → a strong model, *complex* tasks →
+  a balanced one, *daily* questions → a cheap/free one — per turn, no extra latency.
+- 🔎 **Grounded answers** — every factual question goes through **web search** (or
+  memory) and is cited; ATLAS never answers from stale model memory.
+- 💾 **Real memory** — an Obsidian-style vault plus saved conversation history,
+  with nightly consolidation.
+- 🔁 **Self-updater** — pulls new code from GitHub safely: backup → atomic apply →
+  health-check → auto-rollback. **Your data and settings are never touched** — only
+  capabilities update.
+- 🔒 **Private by design** — keys in the macOS Keychain, conversations on-device,
+  per-user state never committed.
 
 ## Quick start
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
+git clone https://github.com/nirhemo/ATLAS.git && cd ATLAS
+python3.12 -m venv .venv && source .venv/bin/activate     # Python 3.10+ required
 pip install -r requirements.txt
 
-# Run the core (HUD + chat + memory). No key needed — offline/degraded mode.
-./atlas/run.sh                 # or: python -m atlas.server
-# open http://localhost:8765
-
-# Full reasoning (Phase 1): connect Claude
-export ANTHROPIC_API_KEY=sk-ant-...
-python -m atlas.server
-
-# Tests
-pip install pytest httpx && pytest -q
-
-# Memory: distill queued facts into the vault, validate the index
-python -m atlas.memory.reindex
-
-# Scheduler (L8): list jobs / run what's due (cron entry) / force one
-python -m atlas.scheduler list
-python -m atlas.scheduler run-due        # put this in launchd/cron each minute
-python -m atlas.scheduler run consolidate
+./atlas/run.sh            # → http://localhost:8765
 ```
 
-What works right now, on real hardware or here:
-- **Dark futuristic HUD** at `/` — system status, live metrics, memory feed,
-  upgrade panel, voice orb, and a working chat box.
-- **Chat** via Claude (with a tool loop) **or** an honest offline fallback
-  (time, memory recall, "remember this") that never hangs or bricks.
-- **Memory** — read/write the Obsidian-style vault, keyword retrieval,
-  `remember` → nightly/manual `consolidate` with git auto-commit, and
-  **Owner edits are never overwritten**.
-- **Risk gating** — READ auto, WRITE per settings, DESTRUCTIVE needs confirmation;
-  uninstalled connectors degrade gracefully.
-- **JSONL evaluation logging** + daily health report.
-- **Scheduler (L8)** — recurring jobs (consolidation, health report, retention
-  purge, upgrade cycle) with a HUD panel, run-now buttons, and a cron CLI; a
-  failing job is isolated and the loop never dies.
+Open **http://localhost:8765** and the **first-run setup wizard** walks you
+through everything: your name, picking a model brain, connecting a key (stored in
+Keychain), voice setup, connector approvals, and a privacy review. Re-run it
+anytime from **Settings → ↻ Setup**.
 
-The voice loop (wake word → STT → TTS) ships as a documented, swappable pipeline
-contract; it needs a mic + speakers, so it activates on the Mac, not in CI.
+> Works in Chrome/Edge for voice (Web Speech). Text chat works everywhere.
 
-## Architecture (7 layers)
+## Choosing a model
+
+The wizard (or **Settings → Model**) lets you pick:
+
+| Backend | What | Cost |
+|---|---|---|
+| 🖥️ **Local (MLX)** | A model on your Mac via an OpenAI-compatible server (e.g. `mlx_lm.server`) | Free, private |
+| 🌐 **OpenRouter** | One key → many models (free + frontier) | Free tiers + pay-as-you-go |
+| ☁️ **Claude API** | Anthropic key | Pay-per-token |
+
+**Task routing** (optional) maps intents to tiers — e.g. Code → Opus, Complex →
+Sonnet, Daily → a free model — so most turns are cheap/free and you only pay for
+the hard ones.
+
+## Privacy & data
+
+API keys live in the **macOS Keychain**. Conversations, your profile, connector
+approvals, and settings stay **on your machine** and are **gitignored** (templates
+ship instead). A scheduled job auto-deletes old transcripts. See [SECURITY.md](SECURITY.md).
+
+## Run as a service (auto-restart)
+
+Install ATLAS as a macOS LaunchAgent so it starts on login, restarts on crash, and
+restarts cleanly after an update:
+
+```bash
+./deploy/install-service.sh     # uninstall: ./deploy/uninstall-service.sh
+```
+
+## Architecture (8 layers)
 
 | Layer | What | Where |
 |---|---|---|
 | **L1** Core Identity | the ATLAS system prompt | `atlas/core/identity.md` |
-| **L2** Memory | Obsidian-style vault + retrieval + consolidation | `atlas/memory/` |
-| **L3** Interface | voice pipeline + dark HUD + FastAPI core | `atlas/interface/`, `atlas/server/` |
-| **L4** Evaluation | JSONL logs + health report | `atlas/evaluation/`, `atlas/logs/` |
-| **L5** Upgrade Engine | versioning, canaries, lessons | `atlas/VERSION.json`, `atlas/engine/`, `atlas/tests/` |
-| **L6** Orchestration | model router + fallback + tools | `atlas/orchestration/` |
-| **L7** Connectors | MCP integrations + risk classes | `atlas/connectors/` |
-| **L8** Scheduler | cron system for recurring jobs | `atlas/scheduler/` |
+| **L2** Memory | vault + retrieval + saved conversations + consolidation | `atlas/memory/` |
+| **L3** Interface | voice pipeline, neural TTS, dark HUD, FastAPI core, onboarding | `atlas/interface/`, `atlas/server/` |
+| **L4** Evaluation | JSONL event logs + health report | `atlas/evaluation/`, `atlas/logs/` |
+| **L5** Upgrade Engine | versioning, snapshots, **self-updater** | `atlas/engine/`, `atlas/VERSION.json` |
+| **L6** Orchestration | model router (api/openrouter/local) + task routing + tools | `atlas/orchestration/` |
+| **L7** Connectors | web search + MCP integrations + risk gating | `atlas/connectors/` |
+| **L8** Scheduler | cron jobs (consolidate, health, purge, update check) | `atlas/scheduler/` |
 
-Single source of truth for settings: **`atlas/config/settings.json`** (shared by
-the Owner UI and the engine). Full design rationale: `atlas/ARCHITECTURE.md`.
+Full design rationale: [`atlas/ARCHITECTURE.md`](atlas/ARCHITECTURE.md).
 
-## Phase
+## Tests
 
-Phase 1 (now): Claude is the brain; wake word, STT, TTS, memory, UI run local.
-→ Phase 2 hybrid local Gemma · → Phase 3 local-first. Identity, memory, and tools
-are backend-independent — switching models never changes who ATLAS is.
+```bash
+pytest -q     # 25 tests, fully offline (ATLAS_FORCE_OFFLINE)
+```
 
-## Owner to-do (Cycle 0 placeholders)
+## Contributing
 
-- Sign off the L1 personality (`core/identity.md`).
-- Replace placeholder identity canaries with real facts (`tests/identity_canaries.*`).
-- Approve the first 3 connectors — calendar, email, web (`connectors/registry.json`).
+PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Keep tests green and offline,
+and never commit per-user state or secrets.
+
+---
+
+*Built with love by **Nir Hemo**, with contributions from **[RepoWise.ai](https://repowise.ai)**.*
