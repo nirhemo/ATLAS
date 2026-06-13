@@ -27,9 +27,12 @@ atlas/interface/voice/models/
 .env
 *.key
 
-# Owner's live config (holds personal settings). Ship settings.example.json;
-# the loader falls back to it on a fresh clone.
+# Per-user state — never committed (templates: *.example.* ship in git, the
+# loaders fall back to them on a fresh clone). This is also what lets the
+# self-updater pull new code without ever touching the owner's data/settings.
 atlas/config/settings.json
+atlas/connectors/registry.json
+atlas/memory/vault/people/owner.md
 
 # Local Claude Code session dir
 .claude/

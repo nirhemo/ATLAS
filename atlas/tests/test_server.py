@@ -67,7 +67,7 @@ def test_chat_remember_preserves_fact_with_leading_space():
 def test_connectors_endpoint():
     r = client.get("/api/connectors")
     assert r.status_code == 200
-    assert "calendar" in r.json()["proposed"]
+    assert "web" in r.json()["installed"]   # connector approvals are per-user; web ships installed by default
 
 
 def test_scheduler_endpoint_lists_jobs():

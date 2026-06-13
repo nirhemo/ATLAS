@@ -15,6 +15,7 @@ SETTINGS_EXAMPLE_PATH = ATLAS_DIR / "config" / "settings.example.json"
 VERSION_PATH = ATLAS_DIR / "VERSION.json"
 ORCH_CONFIG_PATH = ATLAS_DIR / "orchestration" / "config.json"
 REGISTRY_PATH = ATLAS_DIR / "connectors" / "registry.json"
+REGISTRY_EXAMPLE_PATH = ATLAS_DIR / "connectors" / "registry.example.json"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -57,7 +58,9 @@ def orchestration_config() -> dict[str, Any]:
 
 
 def registry() -> dict[str, Any]:
-    return _load_json(REGISTRY_PATH)
+    # registry.json holds the owner's per-user connector approvals (gitignored).
+    # On a fresh clone it won't exist yet — fall back to the committed template.
+    return _load_json(REGISTRY_PATH if REGISTRY_PATH.exists() else REGISTRY_EXAMPLE_PATH)
 
 
 def resolve(rel: str) -> Path:
