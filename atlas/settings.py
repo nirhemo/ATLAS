@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -49,8 +50,31 @@ def save_settings(data: dict[str, Any]) -> dict[str, Any]:
     return reload_settings()
 
 
+@lru_cache(maxsize=1)
+def git_version() -> str | None:
+    """Version straight from git tags — the source of truth. Returns e.g. 'v0.2.1'
+    on a release tag or 'v0.2.1-3-g1a2b3c4' a few commits later, so it advances
+    automatically on every merge (CI tags each merge to main). None when this isn't
+    a git checkout or has no tags yet (then VERSION.json's value is used)."""
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "describe", "--tags", "--dirty"],
+            capture_output=True, text=True, timeout=5)
+        return (r.stdout.strip() or None) if r.returncode == 0 else None
+    except Exception:
+        return None
+
+
 def version() -> dict[str, Any]:
-    return _load_json(VERSION_PATH)
+    """Version metadata. The displayed `version` prefers git tags (so it tracks
+    every merge automatically); VERSION.json's value is the fallback for non-git
+    (tarball) installs and also carries the cycle/phase/layer metadata."""
+    data = _load_json(VERSION_PATH)
+    gv = git_version()
+    if gv:
+        data["version"] = gv.lstrip("v")
+        data["git_version"] = gv
+    return data
 
 
 def orchestration_config() -> dict[str, Any]:

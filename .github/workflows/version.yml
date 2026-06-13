@@ -1,0 +1,47 @@
+name: Auto-version
+
+# Git owns the version. On every merge to main this tags a new semver release so
+# `git describe` (and therefore the ATLAS UI / updater) advances automatically.
+# Bump level: patch by default, minor when the merge message mentions a `feat`,
+# major on a breaking change. Tags are the source of truth; VERSION.json is only
+# the non-git fallback.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write   # push the new tag
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # need full history + tags to compute the next version
+
+      - name: Compute and push the next semver tag
+        run: |
+          set -e
+          git fetch --tags --quiet || true
+          last=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          ver=${last#v}
+          MA=${ver%%.*}; rest=${ver#*.}; MI=${rest%%.*}; PA=${rest##*.}
+          msg=$(git log -1 --pretty=%B)
+          if printf '%s' "$msg" | grep -qiE 'breaking change|!:'; then
+            MA=$((MA+1)); MI=0; PA=0; level=major
+          elif printf '%s' "$msg" | grep -qiE 'feat(\(|:|!)'; then
+            MI=$((MI+1)); PA=0; level=minor
+          else
+            PA=$((PA+1)); level=patch
+          fi
+          next="v${MA}.${MI}.${PA}"
+          if git rev-parse "$next" >/dev/null 2>&1; then
+            echo "Tag $next already exists — nothing to do."; exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$next" -m "release $next ($level)"
+          git push origin "$next"
+          echo "::notice::Tagged $next ($level bump from $last)"
