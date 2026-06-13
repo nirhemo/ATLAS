@@ -7,103 +7,146 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- ATLAS dashboard scaffold (L3). Dark futuristic HUD.
-       Runs standalone on mock data; see app.js INTEGRATION POINT to go live. -->
+  <!-- ATLAS dashboard (L3). Voice-first dark HUD: orb at center, telemetry on the
+       rails, chat in a popover, live logs in a bottom drawer, working settings.
+       Runs on mock data standalone; see app.js INTEGRATION POINT to go live. -->
   <div class="scanline" aria-hidden="true"></div>
 
+  <!-- ───────────────────────── nav bar ───────────────────────── -->
   <header class="topbar glass">
     <div class="brand">
       <span class="logo">◭</span>
       <span class="name">ATLAS</span>
       <span class="tagline">Automated Task &amp; Logic Assistant System</span>
     </div>
-    <div class="state" id="stateIndicator" data-state="idle">
-      <span class="dot"></span><span class="state-label">idle</span>
+    <div class="nav">
+      <div class="state" id="stateIndicator" data-state="idle">
+        <span class="dot"></span><span class="state-label">idle</span>
+      </div>
+      <button class="navbtn" id="navWake" title="Wake word — say “Hey Atlas”">🎙 Wake: off</button>
+      <button class="navbtn" id="navLogs" title="Toggle logs (L)">⊟ Logs</button>
+      <button class="navbtn" id="navSettings" title="Open settings">⚙ Settings</button>
     </div>
   </header>
 
-  <main class="grid">
-    <!-- Voice orb + state -->
-    <section class="panel glass span-2 orb-panel">
-      <div class="orb" id="orb"><div class="orb-core"></div></div>
-      <canvas id="waveform" height="64"></canvas>
-      <p class="hint" id="orbHint">Say “Hey Atlas” to wake</p>
+  <!-- ───────────────────────── stage ───────────────────────── -->
+  <main class="stage">
+    <!-- LEFT RAIL -->
+    <aside class="rail rail-left">
+      <section class="panel glass">
+        <h2>System</h2>
+        <ul class="kv" id="systemStatus">
+          <li><span>Version</span><b data-k="version">—</b></li>
+          <li><span>Model</span><b data-k="backend">—</b></li>
+          <li><span>Credits</span><b data-k="credits">—</b></li>
+          <li><span>Uptime</span><b data-k="uptime">—</b></li>
+          <li><span>RAM</span><b data-k="ram">—</b></li>
+        </ul>
+        <div class="bar"><i id="ramBar" style="width:0%"></i></div>
+      </section>
+
+      <section class="panel glass">
+        <h2>Today <small>vs 7-day</small></h2>
+        <ul class="metrics" id="metrics">
+          <li><span>Latency</span><b data-k="latency">—</b><em data-k="latency_trend"></em></li>
+          <li><span>Accuracy</span><b data-k="accuracy">—</b><em data-k="accuracy_trend"></em></li>
+          <li><span>Interactions</span><b data-k="interactions">—</b><em data-k="interactions_trend"></em></li>
+          <li><span>Memory hit</span><b data-k="memhit">—</b><em data-k="memhit_trend"></em></li>
+        </ul>
+      </section>
+    </aside>
+
+    <!-- CENTER: the voice orb is the main interaction -->
+    <section class="center">
+      <button class="orb" id="orb" aria-label="Talk to ATLAS">
+        <div class="orb-core"></div>
+        <div class="orb-ring" aria-hidden="true"></div>
+      </button>
+      <canvas id="waveform" height="72"></canvas>
+      <p class="hint" id="orbHint">Click the orb or say “Hey Atlas”</p>
+      <p class="transcript" id="transcript"></p>
     </section>
 
-    <!-- System status -->
-    <section class="panel glass">
-      <h2>System</h2>
-      <ul class="kv" id="systemStatus">
-        <li><span>Version</span><b data-k="version">—</b></li>
-        <li><span>Backend</span><b data-k="backend">—</b></li>
-        <li><span>Uptime</span><b data-k="uptime">—</b></li>
-        <li><span>RAM</span><b data-k="ram">—</b></li>
-      </ul>
-      <div class="bar"><i id="ramBar" style="width:0%"></i></div>
-    </section>
+    <!-- RIGHT RAIL -->
+    <aside class="rail rail-right">
+      <section class="panel glass">
+        <h2>Memory activity <small>last 24h</small></h2>
+        <ul class="feed" id="memoryFeed"></ul>
+      </section>
 
-    <!-- Live metrics vs 7-day trend -->
-    <section class="panel glass">
-      <h2>Today <small>vs 7-day</small></h2>
-      <ul class="metrics" id="metrics">
-        <li><span>Latency</span><b data-k="latency">—</b><em data-k="latency_trend"></em></li>
-        <li><span>Accuracy</span><b data-k="accuracy">—</b><em data-k="accuracy_trend"></em></li>
-        <li><span>Interactions</span><b data-k="interactions">—</b><em data-k="interactions_trend"></em></li>
-        <li><span>Memory hit</span><b data-k="memhit">—</b><em data-k="memhit_trend"></em></li>
-      </ul>
-    </section>
+      <section class="panel glass">
+        <h2>Upgrade engine</h2>
+        <div class="upgrade" id="upgrade">
+          <p class="muted">Last cycle <b data-k="last_cycle">—</b></p>
+          <p data-k="last_change">—</p>
+          <p class="muted">Next cycle <b data-k="next_cycle">—</b></p>
+          <p class="muted">Approval <b data-k="approval">—</b></p>
+        </div>
+      </section>
 
-    <!-- Memory activity feed -->
-    <section class="panel glass span-2">
-      <h2>Memory activity <small>last 24h</small></h2>
-      <ul class="feed" id="memoryFeed"></ul>
-    </section>
-
-    <!-- Last upgrade cycle -->
-    <section class="panel glass span-2">
-      <h2>Upgrade engine</h2>
-      <div class="upgrade" id="upgrade">
-        <p class="muted">Last cycle <b data-k="last_cycle">—</b></p>
-        <p data-k="last_change">—</p>
-        <p class="muted">Next cycle <b data-k="next_cycle">—</b></p>
-        <p class="muted">Approval level <b data-k="approval">—</b></p>
-      </div>
-    </section>
-
-    <!-- Scheduled jobs (L8) -->
-    <section class="panel glass span-2">
-      <h2>Scheduled jobs <small>L8 cron</small></h2>
-      <ul class="jobs" id="schedulerJobs"></ul>
-    </section>
-
-    <!-- Chat -->
-    <section class="panel glass span-3 chat-panel">
-      <h2>Conversation</h2>
-      <div class="chat" id="chat"></div>
-      <form class="composer" id="composer">
-        <input id="msg" autocomplete="off" placeholder="Type to ATLAS…" />
-        <button type="submit">Send</button>
-      </form>
-    </section>
-
-    <!-- Settings shortcut -->
-    <section class="panel glass">
-      <h2>Settings</h2>
-      <ul class="settings-links" id="settingsLinks">
-        <li>Wake word · sensitivity</li>
-        <li>Voice · speech rate</li>
-        <li>Model backend · API key</li>
-        <li>Memory · vault &amp; git</li>
-        <li>Upgrade · approval level</li>
-        <li>Connectors</li>
-        <li>Privacy · mic mute</li>
-      </ul>
-      <p class="muted small">All map to <code>config/settings.json</code></p>
-    </section>
+      <section class="panel glass">
+        <h2>Scheduled jobs <small>L8 cron</small></h2>
+        <ul class="jobs" id="schedulerJobs"></ul>
+      </section>
+    </aside>
   </main>
 
-  <footer class="glass">
-    <span>ATLAS HUD scaffold · Cycle 0 · mock data</span>
+  <!-- ───────────────────────── logs drawer ───────────────────────── -->
+  <section class="logs-drawer glass" id="logsDrawer" data-open="false">
+    <header class="logs-head">
+      <button class="logs-toggle" id="logsToggle" title="Expand/collapse (L)">▴ Logs</button>
+      <div class="log-filters" id="logFilters"></div>
+      <div class="logs-actions">
+        <button class="navbtn small" id="logsPause" title="Pause auto-scroll">⏸ Pause</button>
+        <span class="muted small" id="logsCount">0 events</span>
+      </div>
+    </header>
+    <div class="log-list" id="logList"></div>
+  </section>
+
+  <!-- ───────────────────────── chat FAB + popover ───────────────────────── -->
+  <button class="chat-fab" id="chatFab" title="Open chat">
+    <span class="chat-fab-icon">💬</span>
+  </button>
+  <section class="chat-pop glass" id="chatPop" hidden>
+    <header class="chat-head">
+      <h2>Conversation</h2>
+      <button class="iconbtn" id="chatClose" title="Close (Esc)">✕</button>
+    </header>
+    <div class="chat" id="chat"></div>
+    <form class="composer" id="composer">
+      <input id="msg" autocomplete="off" placeholder="Type to ATLAS…" />
+      <button type="submit">Send</button>
+    </form>
+  </section>
+
+  <!-- ───────────────────────── settings modal ───────────────────────── -->
+  <div class="modal-backdrop" id="settingsModal" hidden>
+    <div class="modal glass" role="dialog" aria-modal="true" aria-label="Settings">
+      <header class="modal-head">
+        <h2>Settings</h2>
+        <div class="backend-status" id="backendStatus">
+          <span class="muted small" id="backendLabel">backend —</span>
+          <button class="navbtn small" id="backendTest">Test</button>
+        </div>
+        <button class="iconbtn" id="settingsClose" title="Close (Esc)">✕</button>
+      </header>
+      <div class="settings-body" id="settingsForm"></div>
+      <footer class="modal-foot">
+        <span class="muted small">Writes <code>config/settings.json</code> · applied live</span>
+        <div>
+          <button class="navbtn" id="settingsCancel">Cancel</button>
+          <button class="navbtn primary" id="settingsSave">Save</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <!-- toasts -->
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <footer class="appfoot">
+    <span>ATLAS HUD · Cycle 0</span>
     <span id="clock">--:--:--</span>
   </footer>
 
