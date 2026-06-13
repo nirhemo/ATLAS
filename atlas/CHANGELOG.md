@@ -2,6 +2,35 @@
 
 All notable changes. Versioning per Section 2: MAJOR.MINOR.PATCH.
 
+## [0.2.0] — 2026-06-13 · Cycle 1 · L8 Scheduler (MAJOR — new layer)
+
+Added an **L8 Scheduler layer** (cron system). MAJOR-class change (new layer);
+Owner-approved on request. Rollback point: git tag `v0.1.0` (commit aed71b6).
+
+### Added
+- **L8 Scheduler** — `atlas/scheduler/`: jobs-as-data + named handlers, schedule
+  math (`daily`/`interval`), persisted state (`state.json`, gitignored), an
+  in-process daemon thread **and** a `python -m atlas.scheduler run-due` CLI for
+  system cron/launchd. Spec: `atlas/scheduler/README.md`.
+- **Default jobs** wired to real work: `consolidate` (L2), `health_report` (L4),
+  `episodic_purge` (90-day retention, Section 8), `upgrade_cycle` (L5, records
+  "due" until the AGE runner is automated).
+- **API:** `GET /api/scheduler`, `POST /api/scheduler/run/{job_id}`; HUD gains a
+  "Scheduled jobs" panel with next-run times + run-now buttons.
+- `settings.json → scheduler` (enabled, check interval, per-job schedule/risk).
+  The `consolidate` time is sourced from `memory.consolidation_time` (no drift).
+
+### Safety
+- Failing jobs are isolated (marked `error`, loop survives — Mycroft lesson).
+- Slots missed while offline roll forward on startup (no surprise consolidation).
+- Migrated server lifecycle to FastAPI `lifespan` (no deprecation warnings).
+
+### Tests
+- +9 tests (25 total green): schedule math, due detection, run/persist,
+  missed-slot rollover, failure isolation, retention purge, API endpoints.
+
+---
+
 ## [0.1.0] — 2026-06-12 · Cycle 0 · Bootstrap
 
 Cycle Zero. ATLAS initialized from the Genesis Engine meta-prompt as a runnable

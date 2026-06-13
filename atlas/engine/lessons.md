@@ -44,3 +44,26 @@ query (added an mtime-cache, since this sits on the latency path), duplicated
 metric extraction in L4, a throwaway second Router built at startup, and dead
 code. Net: the VERIFY step paid for itself in the very first cycle — keep it
 mandatory, never rubber-stamp a bootstrap because it "ran."
+
+## Cycle 1 — L8 Scheduler (2026-06-13)
+
+Added the first brand-new layer post-bootstrap: **L8, the cron system**. The
+trigger was honest — the specs kept promising "nightly at 03:00" work (L2
+consolidation, L4 health report, Section 8 retention purge, L5 upgrade cycle)
+that nothing actually ran. R6 says a revealed need becomes its own layer, not a
+bolt-on, so it went in as L8 with its own spec, not as a timer stapled to L2.
+Design lessons worth keeping. First — **jobs are data, handlers are callables**:
+the schedule lives in settings.json and the handler is looked up by name, which
+made the whole layer injectable and gave me six fast unit tests with fake
+handlers instead of waiting on wall-clock time. Second — **decide the
+missed-slot policy explicitly**: a scheduler that runs everything it missed
+while the machine was asleep would fire a surprise consolidation/purge on every
+restart, so the default rolls past slots forward and only `catch_up: true` jobs
+replay — a safer default than the obvious one. Third — **two drivers, one
+state**: an in-process thread for the always-on Mac, plus a `run-due` CLI so
+launchd/cron can drive the exact same jobs; the OS scheduler is more battle-
+tested than my loop (R8), so I let it be an option rather than reinventing it.
+Kept the Mycroft reflex: a throwing job is caught and the loop survives. One
+debt carried forward: `upgrade_cycle` only records "due" — the AGE's automated
+cycle runner is still the missing piece, and that's the natural next layer of
+work now that something is poised to call it.

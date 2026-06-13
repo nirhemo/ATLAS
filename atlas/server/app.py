@@ -7,11 +7,13 @@ Run:  python -m atlas.server     (or ./atlas/run.sh)
 """
 from __future__ import annotations
 
+import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -22,16 +24,32 @@ from ..connectors.loader import ConnectorRegistry
 from ..evaluation.logger import metrics_today
 from ..memory.store import VaultStore
 from ..orchestration.router import Router
+from ..scheduler import Scheduler
 
 WEB_DIR = cfg.ATLAS_DIR / "interface" / "web"
 _START = time.monotonic()
 
-app = FastAPI(title="ATLAS", version=__version__)
+
+def _scheduler_enabled() -> bool:
+    # ATLAS_NO_SCHEDULER lets tests import the app without spawning the thread.
+    return bool(cfg.settings().get("scheduler", {}).get("enabled")) and not os.environ.get("ATLAS_NO_SCHEDULER")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if _scheduler_enabled():
+        scheduler.start()
+    yield
+    scheduler.stop()
+
+
+app = FastAPI(title="ATLAS", version=__version__, lifespan=lifespan)
 
 # Singletons (shared core state across voice + chat).
 router = Router()
 vault = VaultStore()
 registry = ConnectorRegistry()
+scheduler = Scheduler()
 
 
 class ChatIn(BaseModel):
@@ -118,16 +136,33 @@ def consolidate() -> dict[str, Any]:
     return vault.consolidate()
 
 
+@app.get("/api/scheduler")
+def scheduler_status() -> list[dict[str, Any]]:
+    return scheduler.status()
+
+
+@app.post("/api/scheduler/run/{job_id}")
+def scheduler_run(job_id: str) -> dict[str, Any]:
+    try:
+        return scheduler.run_now(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"no such job: {job_id}")
+
+
 @app.post("/api/reload")
 def reload_config() -> dict[str, Any]:
     """Re-read settings/registry and rebuild the core singletons. Lets the
     Settings UI apply changes (e.g. a newly-approved connector, a model-backend
     switch) without restarting the process."""
-    global router, vault, registry
+    global router, vault, registry, scheduler
     cfg.reload_settings()
     router = Router()
     vault = VaultStore()
     registry = ConnectorRegistry()
+    scheduler.stop()
+    scheduler = Scheduler()
+    if _scheduler_enabled():
+        scheduler.start()
     return {"reloaded": True, "backend": router.backend,
             "connectors_installed": list(registry.installed_ids())}
 

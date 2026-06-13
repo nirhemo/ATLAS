@@ -10,6 +10,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 # Force offline mode so the suite never makes a network call.
 os.environ.pop("ANTHROPIC_API_KEY", None)
+# Don't spawn the scheduler thread during tests.
+os.environ["ATLAS_NO_SCHEDULER"] = "1"
 
 from atlas.server.app import app  # noqa: E402
 
@@ -64,3 +66,15 @@ def test_connectors_endpoint():
     r = client.get("/api/connectors")
     assert r.status_code == 200
     assert "calendar" in r.json()["proposed"]
+
+
+def test_scheduler_endpoint_lists_jobs():
+    r = client.get("/api/scheduler")
+    assert r.status_code == 200
+    ids = {j["id"] for j in r.json()}
+    assert {"consolidate", "health_report", "episodic_purge", "upgrade_cycle"} <= ids
+
+
+def test_scheduler_run_unknown_job_404():
+    r = client.post("/api/scheduler/run/ghost")
+    assert r.status_code == 404

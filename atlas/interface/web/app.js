@@ -76,6 +76,38 @@ async function renderMemory() {
         <span>${i.title}</span><time>${i.ago}</time></li>`).join("");
 }
 
+const MOCK_JOBS = [
+  { id: "consolidate", risk: "WRITE", next_run: "2026-06-13T03:00:00", last_status: "ok" },
+  { id: "health_report", risk: "READ", next_run: "2026-06-12T23:55:00", last_status: null },
+  { id: "episodic_purge", risk: "DESTRUCTIVE", next_run: "2026-06-13T04:00:00", last_status: null },
+  { id: "upgrade_cycle", risk: "WRITE", next_run: "2026-06-13T03:30:00", last_status: null }
+];
+
+function shortTime(iso) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+async function renderScheduler() {
+  const jobs = await getJSON("/api/scheduler", MOCK_JOBS);
+  $("#schedulerJobs").innerHTML = jobs.map(j => `
+    <li>
+      <span class="risk ${j.risk}">${j.risk[0]}</span>
+      <b>${j.id}</b>
+      <em class="status ${j.last_status || ""}">${j.last_status || "scheduled"}</em>
+      <time>next ${shortTime(j.next_run)}</time>
+      <button class="run" data-job="${j.id}" title="Run now">▶</button>
+    </li>`).join("");
+  $("#schedulerJobs").querySelectorAll("button.run").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      btn.disabled = true; btn.textContent = "…";
+      try { await fetch(API + "/api/scheduler/run/" + btn.dataset.job, { method: "POST" }); } catch {}
+      renderScheduler();
+    });
+  });
+}
+
 async function renderUpgrade() {
   const u = await getJSON("/api/upgrade", MOCK.upgrade);
   const root = $("#upgrade");
@@ -169,7 +201,7 @@ setInterval(() => { $("#clock").textContent = new Date().toLocaleTimeString(); }
 /* boot */
 setState("idle");
 waveform();
-renderStatus(); renderMetrics(); renderMemory(); renderUpgrade();
+renderStatus(); renderMetrics(); renderMemory(); renderUpgrade(); renderScheduler();
 connectWS();
-setInterval(() => { renderStatus(); renderMetrics(); }, 5000);
+setInterval(() => { renderStatus(); renderMetrics(); renderScheduler(); }, 5000);
 addMsg("atlas", "ATLAS online. Cycle 0 bootstrap complete — how can I help?");

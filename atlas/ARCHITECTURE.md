@@ -52,6 +52,11 @@ the vault or connectors → L4 logs an `interaction` event with latency + memory
 - **L7 Connectors** — `registry.json` (installed/proposed) + `loader.py` enforce
   risk classes. Cycle 0 ships zero installed connectors; calendar/email/web are
   proposed and await Owner approval (installing = MINOR).
+- **L8 Scheduler** (Cycle 1) — `scheduler/` runs the recurring jobs the other
+  layers only described: consolidation (L2), health report (L4), retention purge
+  (Section 8), upgrade cycle (L5). Jobs are data + named handlers; state persists
+  to `state.json`; driven by an in-process thread or `python -m atlas.scheduler
+  run-due` from system cron. Spec: `scheduler/README.md`.
 
 ## Design decisions worth knowing
 

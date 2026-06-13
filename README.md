@@ -26,6 +26,11 @@ pip install pytest httpx && pytest -q
 
 # Memory: distill queued facts into the vault, validate the index
 python -m atlas.memory.reindex
+
+# Scheduler (L8): list jobs / run what's due (cron entry) / force one
+python -m atlas.scheduler list
+python -m atlas.scheduler run-due        # put this in launchd/cron each minute
+python -m atlas.scheduler run consolidate
 ```
 
 What works right now, on real hardware or here:
@@ -39,6 +44,9 @@ What works right now, on real hardware or here:
 - **Risk gating** — READ auto, WRITE per settings, DESTRUCTIVE needs confirmation;
   uninstalled connectors degrade gracefully.
 - **JSONL evaluation logging** + daily health report.
+- **Scheduler (L8)** — recurring jobs (consolidation, health report, retention
+  purge, upgrade cycle) with a HUD panel, run-now buttons, and a cron CLI; a
+  failing job is isolated and the loop never dies.
 
 The voice loop (wake word → STT → TTS) ships as a documented, swappable pipeline
 contract; it needs a mic + speakers, so it activates on the Mac, not in CI.
@@ -54,6 +62,7 @@ contract; it needs a mic + speakers, so it activates on the Mac, not in CI.
 | **L5** Upgrade Engine | versioning, canaries, lessons | `atlas/VERSION.json`, `atlas/engine/`, `atlas/tests/` |
 | **L6** Orchestration | model router + fallback + tools | `atlas/orchestration/` |
 | **L7** Connectors | MCP integrations + risk classes | `atlas/connectors/` |
+| **L8** Scheduler | cron system for recurring jobs | `atlas/scheduler/` |
 
 Single source of truth for settings: **`atlas/config/settings.json`** (shared by
 the Owner UI and the engine). Full design rationale: `atlas/ARCHITECTURE.md`.

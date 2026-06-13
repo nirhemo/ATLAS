@@ -42,6 +42,16 @@
   "connectors": {
     "registry_path": "atlas/connectors/registry.json"
   },
+  "scheduler": {
+    "enabled": true,
+    "check_interval_seconds": 60,
+    "jobs": {
+      "consolidate":   { "handler": "consolidate",   "type": "daily", "at": "03:00", "enabled": true, "risk": "WRITE", "catch_up": false },
+      "health_report": { "handler": "health_report", "type": "daily", "at": "23:55", "enabled": true, "risk": "READ", "catch_up": false },
+      "episodic_purge":{ "handler": "episodic_purge","type": "daily", "at": "04:00", "enabled": true, "risk": "DESTRUCTIVE", "catch_up": false },
+      "upgrade_cycle": { "handler": "upgrade_cycle", "type": "daily", "at": "03:30", "enabled": true, "risk": "WRITE", "catch_up": false }
+    }
+  },
   "privacy": {
     "episodic_retention_days": 90,
     "encrypt_at_rest": true,
