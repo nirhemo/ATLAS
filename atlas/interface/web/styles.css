@@ -196,7 +196,7 @@ code{font-family:var(--mono);color:var(--accent);font-size:12px}
 /* ───────────── settings modal ───────────── */
 .modal-backdrop{position:fixed;inset:0;z-index:9;background:rgba(2,4,10,.6);
   backdrop-filter:blur(4px);display:grid;place-items:center;animation:popin .15s ease}
-.modal{width:720px;max-width:calc(100vw - 32px);max-height:88vh;display:flex;flex-direction:column;padding:0;overflow:hidden}
+.modal{width:864px;max-width:calc(100vw - 32px);height:min(90vh,792px);max-height:92vh;display:flex;flex-direction:column;padding:0;overflow:hidden}
 .modal-head{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid var(--line)}
 .modal-head h2{margin:0;flex:1}
 .backend-status{display:flex;align-items:center;gap:8px}
@@ -247,6 +247,33 @@ code{font-family:var(--mono);color:var(--accent);font-size:12px}
 .mtbtn.active{background:rgba(0,224,255,.14);color:var(--accent)}
 .mhint{margin:6px 0 4px;font-size:11px;color:var(--muted);line-height:1.5}
 .mhint code{font-size:11px}
+/* settings: advanced collapse, read-only fields, software-update box */
+.sadv{border:1px solid var(--line);border-radius:10px;margin-top:6px}
+.sadv>summary{cursor:pointer;list-style:none;padding:10px 14px;font-family:var(--mono);
+  font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.sadv>summary::-webkit-details-marker{display:none}
+.sadv>summary::before{content:"\25B8  ";color:var(--accent)}
+.sadv[open]>summary::before{content:"\25BE  "}
+.sadv>div{padding:2px 14px 12px;display:flex;flex-direction:column;gap:10px}
+.sreadonly{font-family:var(--mono);color:var(--muted);font-size:12px}
+.upd-box{display:flex;flex-direction:column;gap:10px}
+.upd-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.upd-log{margin:4px 0 0;padding-left:16px;font-size:11px;color:var(--muted);line-height:1.6}
+/* themed scrollbars — match the dark HUD instead of the bright OS default */
+*{scrollbar-width:thin;scrollbar-color:rgba(0,224,255,.25) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(0,224,255,.20);border-radius:8px;
+  border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,224,255,.40);background-clip:padding-box}
+::-webkit-scrollbar-corner{background:transparent}
+/* compact per-task routing rows: label · provider · model on one line */
+.tier-row{display:grid;grid-template-columns:96px minmax(120px,140px) 1fr;gap:8px;align-items:center;margin:3px 0}
+.tier-row .tier-label{font-size:12px;color:var(--text);white-space:nowrap}
+.tier-row select,.tier-row input{width:100%;margin:0;min-width:0;
+  background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:8px;
+  color:var(--text);padding:7px 10px;font-family:var(--mono);font-size:13px;outline:none}
+.tier-row select:focus,.tier-row input:focus{border-color:var(--line-bright)}
 .code-hint code{display:inline-block;background:rgba(0,0,0,.4);padding:5px 9px;border-radius:6px;
   border:1px solid var(--line);margin-top:4px;white-space:pre-wrap;word-break:break-all;color:var(--accent)}
 .status-pill{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;

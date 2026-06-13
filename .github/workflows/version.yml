@@ -28,10 +28,13 @@ jobs:
           last=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           ver=${last#v}
           MA=${ver%%.*}; rest=${ver#*.}; MI=${rest%%.*}; PA=${rest##*.}
-          msg=$(git log -1 --pretty=%B)
-          if printf '%s' "$msg" | grep -qiE 'breaking change|!:'; then
+          # Inspect every commit since the last tag (not just the merge commit), so a
+          # `feat:` in the PR's own commits bumps minor even when merged via a merge commit.
+          msgs=$(git log "${last}..HEAD" --pretty=%B 2>/dev/null)
+          [ -z "$msgs" ] && msgs=$(git log -1 --pretty=%B)
+          if printf '%s' "$msgs" | grep -qiE 'breaking change|!:'; then
             MA=$((MA+1)); MI=0; PA=0; level=major
-          elif printf '%s' "$msg" | grep -qiE 'feat(\(|:|!)'; then
+          elif printf '%s' "$msgs" | grep -qiE 'feat(\(|:|!)'; then
             MI=$((MI+1)); PA=0; level=minor
           else
             PA=$((PA+1)); level=patch

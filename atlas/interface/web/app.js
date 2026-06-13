@@ -526,6 +526,8 @@ async function loadSettings() {
   if (!data) { form.innerHTML = `<p class="muted">Core not running — start ATLAS to edit settings.</p>`; return; }
   settingsData = data;
   const modelsData = await getJSON("/api/models", null);  // for the interactive model picker
+  const voiceStatus = await getJSON("/api/voice/status", null);  // for the voice picker
+  const statusData = await getJSON("/api/status", null);         // real (git) version, read-only
 
   const isSection = ([, v]) => v && typeof v === "object" && !Array.isArray(v);
   const sections = Object.entries(data).filter(isSection);
@@ -539,7 +541,11 @@ async function loadSettings() {
   if (data._comment || scalars.length) {
     const top = document.createElement("div"); top.className = "spane-top";
     if (data._comment) { const c = document.createElement("p"); c.className = "scomment"; c.textContent = data._comment; top.appendChild(c); }
-    scalars.forEach(([k, v]) => top.appendChild(buildField(k, v, [k])));
+    scalars.forEach(([k, v]) => {
+      if (k === "version")   // version is git-managed — show it, never edit it
+        top.appendChild(readonlyRow("version", (statusData && statusData.version) || v));
+      else top.appendChild(buildField(k, v, [k]));
+    });
     panes.appendChild(top);
   }
 
@@ -556,6 +562,8 @@ async function loadSettings() {
     const pane = document.createElement("div");
     pane.className = "spane"; pane.dataset.pane = key;
     if (key === "model") pane.appendChild(buildModelPane(val, modelsData));
+    else if (key === "voice") pane.appendChild(buildVoicePane(val, voiceStatus));
+    else if (key === "upgrade") pane.appendChild(buildUpgradePane(val));
     else pane.appendChild(buildSection(val, [key]));
     panes.appendChild(pane);
   });
@@ -632,13 +640,27 @@ function numberField(labelText, path, value) {
   const i = document.createElement("input"); i.type = "number"; i.dataset.path = path; i.dataset.type = "number";
   i.step = Number.isInteger(value) ? "1" : "0.1"; i.value = value; r.appendChild(i); return r;
 }
+function readonlyRow(labelText, value) {
+  const r = mfield(labelText);
+  const s = document.createElement("span"); s.className = "sreadonly";
+  s.textContent = value == null ? "—" : String(value);
+  r.appendChild(s); return r;
+}
+/* a collapsible "Advanced" group (keeps rarely-touched fields out of the way).
+   Returns {el, body}; append fields to body. */
+function advDetails(title) {
+  const el = document.createElement("details"); el.className = "sadv";
+  const sum = document.createElement("summary"); sum.textContent = title; el.appendChild(sum);
+  const body = document.createElement("div"); el.appendChild(body);
+  return { el, body };
+}
 
 /* reusable API-key helper bound to POST /api/secret/{provider}: a password
    field + Save-to-Keychain button + status. The key is NEVER a settings field
    (no data-path) — it goes to the Keychain, not settings.json. */
-function keyHelper(provider, present, envName) {
+function keyHelper(provider, present, envName, labelText = "API key") {
   const frag = document.createDocumentFragment();
-  const row = mfield("API key");
+  const row = mfield(labelText);
   const input = document.createElement("input"); input.type = "password"; input.className = "keyinput";
   input.placeholder = present ? "•••••••• (detected)" : "paste key…";
   const save = document.createElement("button"); save.type = "button"; save.className = "navbtn small"; save.textContent = "Save to Keychain";
@@ -678,44 +700,40 @@ function buildModelPane(model, md) {
   const sec = () => { const d = document.createElement("div"); d.className = "msec"; return d; };
   const wrap = document.createElement("div"); wrap.className = "model-pane";
 
-  // mode toggle (3-way)
-  const modeRow = mfield("Backend mode");
-  const toggle = document.createElement("div"); toggle.className = "mode-toggle";
   const mk = (t) => { const b = document.createElement("button"); b.type = "button"; b.className = "mtbtn"; b.textContent = t; return b; };
-  const apiBtn = mk("☁ API · Claude"), orBtn = mk("🌐 OpenRouter"), locBtn = mk("🖥 Local · MLX");
-  toggle.append(apiBtn, orBtn, locBtn);
-  const modeInput = document.createElement("input"); modeInput.type = "hidden"; modeInput.dataset.path = "model.mode"; modeInput.dataset.type = "string"; modeInput.value = model.mode || "api";
-  modeRow.append(toggle, modeInput);
-  wrap.appendChild(modeRow);
-
-  // ── Task routing (auto-pick a model per turn by intent; overrides mode) ──
+  const title = (t) => { const d = document.createElement("div"); d.className = "sset-title"; d.textContent = t; return d; };
+  const hintP = (html) => { const p = document.createElement("p"); p.className = "mhint"; p.innerHTML = html; return p; };
   const r = model.routing || {}; const rt = r.tiers || {};
-  const routeSec = sec();
-  const rTitle = document.createElement("div"); rTitle.className = "sset-title"; rTitle.textContent = "Task routing";
-  routeSec.appendChild(rTitle);
-  const rRow = mfield("Route by task type");
-  const rToggle = document.createElement("input"); rToggle.type = "checkbox"; rToggle.checked = !!r.enabled;
-  rToggle.dataset.path = "model.routing.enabled"; rToggle.dataset.type = "boolean";
-  rRow.appendChild(rToggle); routeSec.appendChild(rRow);
-  const rHint = document.createElement("p"); rHint.className = "mhint";
-  rHint.innerHTML = `When on, each turn is auto-routed by intent — <b>overrides the single backend</b> below. Daily = cheap/free; Complex & Code cost per use.`;
-  routeSec.appendChild(rHint);
-  [["code", "🛠 Code"], ["complex", "🧠 Complex"], ["daily", "💬 Daily"]].forEach(([k, label]) => {
-    routeSec.appendChild(textField(`${label} model`, `model.routing.tiers.${k}.model`, (rt[k] || {}).model || ""));
-  });
-  wrap.appendChild(routeSec);
 
-  // ── API · Claude ──
+  // hidden state, driven by the toggles below (collected on Save)
+  const routingInput = document.createElement("input"); routingInput.type = "checkbox"; routingInput.style.display = "none";
+  routingInput.dataset.path = "model.routing.enabled"; routingInput.dataset.type = "boolean"; routingInput.checked = !!r.enabled;
+  const modeInput = document.createElement("input"); modeInput.type = "hidden";
+  modeInput.dataset.path = "model.mode"; modeInput.dataset.type = "string"; modeInput.value = model.mode || "api";
+  let orLoaded = false;   // OpenRouter catalog fetched once per open
+
+  // ── 1 · Strategy: one model, or route per task ──
+  const stratSec = sec(); stratSec.appendChild(title("How ATLAS picks a model"));
+  const stratToggle = document.createElement("div"); stratToggle.className = "mode-toggle";
+  const singleBtn = mk("◉ Single model"), smartBtn = mk("⚡ Smart routing");
+  stratToggle.append(singleBtn, smartBtn);
+  stratSec.append(stratToggle, routingInput, modeInput);
+  stratSec.appendChild(hintP(`<b>Single</b> uses one backend for everything. <b>Smart routing</b> picks a model per turn by task — Daily cheap/free, Complex &amp; Code stronger.`));
+  wrap.appendChild(stratSec);
+
+  // ── 2 · Single-model config (backend + that backend's model) ──
+  const singleSec = sec();
+  const backendRow = mfield("Backend");
+  const bToggle = document.createElement("div"); bToggle.className = "mode-toggle";
+  const apiBtn = mk("☁ Claude API"), orBtn = mk("🌐 OpenRouter"), locBtn = mk("🖥 Local · MLX");
+  bToggle.append(apiBtn, orBtn, locBtn); backendRow.appendChild(bToggle); singleSec.appendChild(backendRow);
+
   const apiSec = sec();
-  apiSec.appendChild(selectField("API model", "model.backend", apiModels, model.backend));
-  apiSec.appendChild(selectField("Escalation model", "model.escalation_model", apiModels, model.escalation_model));
-  apiSec.appendChild(keyHelper("anthropic", apiMd.key_present, apiMd.key_env || "ANTHROPIC_API_KEY"));
-  wrap.appendChild(apiSec);
+  apiSec.appendChild(selectField("Claude model", "model.backend", apiModels, model.backend));
+  singleSec.appendChild(apiSec);
 
-  // ── OpenRouter ──
   const orSec = sec();
-  orSec.appendChild(textField("Endpoint", "model.openrouter.endpoint", (model.openrouter && model.openrouter.endpoint) || "https://openrouter.ai/api/v1"));
-  const orRow = mfield("Model");
+  const orRow = mfield("OpenRouter model");
   const dlId = "or-model-list";
   const orInput = document.createElement("input"); orInput.type = "text"; orInput.setAttribute("list", dlId);
   orInput.dataset.path = "model.openrouter.model"; orInput.dataset.type = "string";
@@ -726,22 +744,16 @@ function buildModelPane(model, md) {
   fillDL(orMd.models);
   const orFetch = document.createElement("button"); orFetch.type = "button"; orFetch.className = "navbtn small"; orFetch.title = "Fetch live model list"; orFetch.textContent = "↻";
   orRow.append(orInput, orFetch); orSec.append(orRow, dl);
-  const orStatus = document.createElement("p"); orStatus.className = "mhint";
-  orStatus.innerHTML = `Any model from <code>openrouter.ai/models</code>. ↻ loads the live list to search.`;
+  const orStatus = hintP(`Any model from <code>openrouter.ai/models</code>. ↻ loads the live list to search.`);
   orSec.appendChild(orStatus);
   orFetch.addEventListener("click", async () => {
     orFetch.disabled = true; orFetch.textContent = "…";
-    const d = await getJSON("/api/openrouter/models", null);
-    if (d && d.ok) { fillDL(d.models); orStatus.innerHTML = `<span class="status-pill ok">loaded</span> ${d.count} models — start typing to search`; toast(`${d.count} OpenRouter models loaded`, "ok"); }
-    else { toast("Couldn't fetch OpenRouter models", "err"); }
+    await loadOR(true);
     orFetch.disabled = false; orFetch.textContent = "↻";
   });
-  orSec.appendChild(keyHelper("openrouter", orMd.key_present, orMd.key_env || "OPENROUTER_API_KEY"));
-  wrap.appendChild(orSec);
+  singleSec.appendChild(orSec);
 
-  // ── Local · MLX ──
   const locSec = sec();
-  locSec.appendChild(textField("Server endpoint", "model.local.endpoint", (model.local && model.local.endpoint) || "http://localhost:8080/v1"));
   const lmRow = mfield("Local model");
   const lmSel = document.createElement("select"); lmSel.dataset.path = "model.local.model"; lmSel.dataset.type = "string";
   const refreshBtn = document.createElement("button"); refreshBtn.type = "button"; refreshBtn.className = "navbtn small"; refreshBtn.title = "Fetch running models"; refreshBtn.textContent = "↻";
@@ -768,28 +780,191 @@ function buildModelPane(model, md) {
     toast(up ? "Local models refreshed" : "Local server not reachable", up ? "ok" : "err");
     refreshBtn.disabled = false; refreshBtn.textContent = "↻";
   });
-  wrap.appendChild(locSec);
+  singleSec.appendChild(locSec);
+  wrap.appendChild(singleSec);
 
-  // ── shared params ──
-  const shared = sec();
-  shared.appendChild(numberField("Max tokens", "model.max_tokens", model.max_tokens));
-  shared.appendChild(numberField("Temperature", "model.temperature", model.temperature));
-  wrap.appendChild(shared);
+  // ── 3 · Smart-routing config (per-task provider + model) ──
+  const routeSec = sec(); routeSec.appendChild(title("Per-task models"));
+  const tierDlId = "route-model-list";
+  const tierDl = document.createElement("datalist"); tierDl.id = tierDlId;
+  const fillTierDL = (ids) => { tierDl.innerHTML = (ids || []).map(i => `<option value="${i}"></option>`).join(""); };
+  fillTierDL(orMd.models);
+  // One compact row per tier: label · provider · model (not six stacked rows).
+  [["code", "🛠 Code"], ["complex", "🧠 Complex"], ["daily", "💬 Daily"]].forEach(([k, label]) => {
+    const t = rt[k] || {};
+    const row = document.createElement("div"); row.className = "tier-row";
+    const lab = document.createElement("span"); lab.className = "tier-label"; lab.textContent = label;
+    const ps = document.createElement("select");
+    ps.dataset.path = `model.routing.tiers.${k}.provider`; ps.dataset.type = "string";
+    ps.innerHTML = [["openrouter", "OpenRouter"], ["api", "Claude API"], ["local", "Local"]]
+      .map(([id, l]) => `<option value="${id}"${id === (t.provider || "openrouter") ? " selected" : ""}>${l}</option>`).join("");
+    const mi = document.createElement("input"); mi.type = "text"; mi.setAttribute("list", tierDlId);
+    mi.dataset.path = `model.routing.tiers.${k}.model`; mi.dataset.type = "string";
+    mi.value = t.model || ""; mi.placeholder = "provider/model";
+    row.append(lab, ps, mi); routeSec.appendChild(row);
+  });
+  routeSec.appendChild(tierDl);
+  const rFetch = document.createElement("button"); rFetch.type = "button"; rFetch.className = "navbtn small";
+  rFetch.textContent = "↻ load OpenRouter models"; routeSec.appendChild(rFetch);
+  rFetch.addEventListener("click", async () => {
+    rFetch.disabled = true; await loadOR(true); rFetch.disabled = false;
+  });
+  wrap.appendChild(routeSec);
 
-  // ── mode switching ──
+  // ── 4 · Provider keys (always available — stored in macOS Keychain) ──
+  const keySec = sec(); keySec.appendChild(title("Provider keys"));
+  keySec.appendChild(keyHelper("anthropic", apiMd.key_present, apiMd.key_env || "ANTHROPIC_API_KEY", "Claude API key"));
+  keySec.appendChild(keyHelper("openrouter", orMd.key_present, orMd.key_env || "OPENROUTER_API_KEY", "OpenRouter key"));
+  wrap.appendChild(keySec);
+
+  // ── 5 · Advanced (rarely changed) ──
+  const mAdv = advDetails("Advanced");
+  mAdv.body.appendChild(selectField("Escalation model (Claude)", "model.escalation_model", apiModels, model.escalation_model));
+  mAdv.body.appendChild(textField("OpenRouter endpoint", "model.openrouter.endpoint", (model.openrouter && model.openrouter.endpoint) || "https://openrouter.ai/api/v1"));
+  mAdv.body.appendChild(textField("Local server endpoint", "model.local.endpoint", (model.local && model.local.endpoint) || "http://localhost:8080/v1"));
+  mAdv.body.appendChild(numberField("Max tokens", "model.max_tokens", model.max_tokens));
+  mAdv.body.appendChild(numberField("Temperature", "model.temperature", model.temperature));
+  wrap.appendChild(mAdv.el);
+
+  // Auto-load the OpenRouter catalog (no key needed) so its model dropdowns are
+  // populated as soon as OpenRouter is in play — no manual ↻ click required.
+  async function loadOR(force) {
+    if (orLoaded && !force) return;
+    const d = await getJSON("/api/openrouter/models", null);
+    if (d && d.ok) {
+      fillDL(d.models); fillTierDL(d.models); orLoaded = true;
+      orStatus.innerHTML = `<span class="status-pill ok">loaded</span> ${d.count} OpenRouter models — type to search`;
+      if (force) toast(`${d.count} OpenRouter models loaded`, "ok");
+    } else if (force) toast("Couldn't fetch OpenRouter models", "err");
+  }
+
+  // ── visibility wiring ──
   const setMode = (mode) => {
     modeInput.value = mode;
     apiBtn.classList.toggle("active", mode === "api");
     orBtn.classList.toggle("active", mode === "openrouter");
     locBtn.classList.toggle("active", mode === "local");
-    apiSec.hidden = mode !== "api";
-    orSec.hidden = mode !== "openrouter";
-    locSec.hidden = mode !== "local";
+    apiSec.hidden = mode !== "api"; orSec.hidden = mode !== "openrouter"; locSec.hidden = mode !== "local";
+    if (mode === "openrouter") loadOR();
+  };
+  const setStrategy = (smart) => {
+    routingInput.checked = smart;
+    singleBtn.classList.toggle("active", !smart); smartBtn.classList.toggle("active", smart);
+    singleSec.hidden = smart; routeSec.hidden = !smart;
+    if (smart) loadOR();
   };
   apiBtn.addEventListener("click", () => setMode("api"));
   orBtn.addEventListener("click", () => setMode("openrouter"));
   locBtn.addEventListener("click", () => setMode("local"));
+  singleBtn.addEventListener("click", () => setStrategy(false));
+  smartBtn.addEventListener("click", () => setStrategy(true));
   setMode(model.mode || "api");
+  setStrategy(!!r.enabled);
+  return wrap;
+}
+
+/* voice pane: the voice picker (like onboarding) + a test button + wake toggle,
+   with the rarely-touched knobs tucked into an Advanced collapse. */
+function buildVoicePane(voice, vs) {
+  vs = vs || { voices: [{ id: "bm_george", label: "George (British male)" }], models_present: false };
+  const wrap = document.createElement("div"); wrap.className = "model-pane";
+  const cur = voice.tts_voice || "kokoro:bm_george";
+  const curId = cur.includes(":") ? cur.split(":")[1] : cur;
+  const voices = (vs.voices && vs.voices.length) ? vs.voices : [{ id: curId, label: curId }];
+
+  const vrow = mfield("Voice");
+  const sel = document.createElement("select"); sel.dataset.path = "voice.tts_voice"; sel.dataset.type = "string";
+  sel.innerHTML = voices.map(v => `<option value="kokoro:${v.id}"${("kokoro:" + v.id) === cur ? " selected" : ""}>${v.label}</option>`).join("");
+  if (!voices.some(v => ("kokoro:" + v.id) === cur)) {
+    const o = document.createElement("option"); o.value = cur; o.textContent = curId; o.selected = true; sel.appendChild(o);
+  }
+  const test = document.createElement("button"); test.type = "button"; test.className = "navbtn small"; test.textContent = "▶ Test";
+  vrow.append(sel, test); wrap.appendChild(vrow);
+
+  const vhint = document.createElement("p"); vhint.className = "mhint";
+  vhint.textContent = vs.models_present
+    ? "On-device neural voice (Kokoro) — no cloud, no key."
+    : "Local voice not downloaded — the browser voice is used. Download it from the first-run / voice setup.";
+  wrap.appendChild(vhint);
+
+  test.addEventListener("click", async () => {
+    test.disabled = true; const old = test.textContent; test.textContent = "…";
+    try {
+      const id = sel.value.includes(":") ? sel.value.split(":")[1] : sel.value;
+      const r = await fetch(API + "/api/tts", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: "Good evening. ATLAS online and ready.", voice: id }) });
+      if (!r.ok) throw 0;
+      new Audio(URL.createObjectURL(await r.blob())).play();
+    } catch { toast("Local voice unavailable — browser voice will be used", "err"); }
+    finally { test.disabled = false; test.textContent = old; }
+  });
+
+  const wrow = mfield("Wake word (“Hey Atlas”)");
+  const wt = document.createElement("input"); wt.type = "checkbox"; wt.checked = voice.wake_word_enabled !== false;
+  wt.dataset.path = "voice.wake_word_enabled"; wt.dataset.type = "boolean"; wrow.appendChild(wt); wrap.appendChild(wrow);
+  wrap.appendChild(numberField("Speech rate", "voice.speech_rate", voice.speech_rate));
+
+  const adv = advDetails("Advanced voice");
+  ["wake_word_model", "wake_word_sensitivity", "vad_silence_ms", "stt_model", "streaming_tts", "mic_mute"]
+    .forEach(k => { if (k in voice) adv.body.appendChild(buildField(k, voice[k], ["voice", k])); });
+  wrap.appendChild(adv.el);
+  return wrap;
+}
+
+/* upgrade pane: a real software-update control (manual check + apply + restart)
+   for when the nightly auto-update didn't run; policy fields under Advanced. */
+function buildUpgradePane(up) {
+  const wrap = document.createElement("div"); wrap.className = "model-pane";
+  const title = document.createElement("div"); title.className = "sset-title"; title.textContent = "Software update";
+  wrap.appendChild(title);
+  const box = document.createElement("div"); box.className = "upd-box";
+  const status = document.createElement("div"); status.innerHTML = `<span class="muted small">checking…</span>`;
+  const log = document.createElement("ul"); log.className = "upd-log"; log.hidden = true;
+  const row = document.createElement("div"); row.className = "upd-row";
+  const checkBtn = document.createElement("button"); checkBtn.type = "button"; checkBtn.className = "navbtn small"; checkBtn.textContent = "Check for updates";
+  const applyBtn = document.createElement("button"); applyBtn.type = "button"; applyBtn.className = "navbtn small primary"; applyBtn.textContent = "Update now"; applyBtn.hidden = true;
+  const restartBtn = document.createElement("button"); restartBtn.type = "button"; restartBtn.className = "navbtn small"; restartBtn.textContent = "Restart ATLAS"; restartBtn.hidden = true;
+  row.append(checkBtn, applyBtn, restartBtn);
+  box.append(status, log, row); wrap.appendChild(box);
+  const hint = document.createElement("p"); hint.className = "mhint";
+  hint.textContent = "Pulls new code from GitHub safely: backup → apply → health-check → auto-rollback. Your data and settings are never touched. Use this if the automatic nightly update didn't run.";
+  wrap.appendChild(hint);
+
+  const setLog = (lines) => {
+    log.innerHTML = "";
+    (lines || []).slice(0, 6).forEach(l => { const li = document.createElement("li"); li.textContent = l; log.appendChild(li); });
+    log.hidden = !(lines && lines.length);
+  };
+  const setMuted = (txt) => { status.innerHTML = `<span class="muted small"></span>`; status.querySelector(".muted").textContent = txt; };
+  async function doCheck() {
+    status.innerHTML = `<span class="muted small">checking…</span>`; applyBtn.hidden = true; restartBtn.hidden = true; setLog([]);
+    const d = await getJSON("/api/update/check", null);
+    if (!d || !d.ok) { status.innerHTML = `<span class="status-pill warn">offline</span> <span class="muted small"></span>`; status.querySelector(".muted").textContent = (d && d.detail) || "can't reach GitHub"; return; }
+    if (!d.update_available) { status.innerHTML = `<span class="status-pill ok">up to date</span> <span class="muted small">v${d.current_version} · ${d.current_commit}</span>`; return; }
+    status.innerHTML = `<span class="status-pill warn">update available</span> <span class="muted small">${d.behind} commit(s) behind · v${d.current_version}</span>`;
+    setLog(d.changelog); applyBtn.hidden = false;
+  }
+  checkBtn.addEventListener("click", doCheck);
+  applyBtn.addEventListener("click", async () => {
+    applyBtn.disabled = true; const old = applyBtn.textContent; applyBtn.textContent = "updating…";
+    try {
+      const r = await fetch(API + "/api/update/apply?confirm=true", { method: "POST", signal: AbortSignal.timeout(600000) });
+      const res = await r.json();
+      if (res.applied) { status.innerHTML = `<span class="status-pill ok">updated</span> <span class="muted small">v${res.to_version} — restart to load</span>`; setLog([]); applyBtn.hidden = true; restartBtn.hidden = false; toast(`Updated to v${res.to_version}`, "ok"); }
+      else if (res.rolled_back) { status.innerHTML = `<span class="status-pill warn">rolled back</span> <span class="muted small"></span>`; status.querySelector(".muted").textContent = res.detail || "health check failed"; toast("Update rolled back — nothing lost", "err"); }
+      else setMuted(res.detail || "no update applied");
+    } catch { toast("Update failed", "err"); status.innerHTML = `<span class="status-pill warn">failed</span>`; }
+    finally { applyBtn.disabled = false; applyBtn.textContent = old; }
+  });
+  restartBtn.addEventListener("click", async () => {
+    try { const r = await fetch(API + "/api/restart", { method: "POST" }); if (!r.ok) throw 0; toast("Restarting ATLAS…", "ok"); }
+    catch { toast("Not supervised — restart ATLAS manually", "err"); }
+  });
+  doCheck();
+
+  const adv = advDetails("Advanced — upgrade policy");
+  adv.body.appendChild(buildSection(up, ["upgrade"]));
+  wrap.appendChild(adv.el);
   return wrap;
 }
 
