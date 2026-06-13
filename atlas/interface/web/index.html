@@ -135,6 +135,7 @@
       <footer class="modal-foot">
         <span class="muted small">Writes <code>config/settings.json</code> · applied live</span>
         <div>
+          <button class="navbtn" onclick="atlasRunOnboarding && atlasRunOnboarding()" title="Re-run first-time setup">↻ Setup</button>
           <button class="navbtn" id="settingsCancel">Cancel</button>
           <button class="navbtn primary" id="settingsSave">Save</button>
         </div>
@@ -145,11 +146,21 @@
   <!-- toasts -->
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
+  <!-- first-run onboarding wizard (shown when not yet onboarded) -->
+  <div id="onboarding" class="ob" hidden>
+    <div class="ob-card glass">
+      <div class="ob-rail"></div>
+      <div class="ob-body"></div>
+      <div class="ob-foot"></div>
+    </div>
+  </div>
+
   <footer class="appfoot">
     <span>ATLAS HUD · Cycle 0</span>
     <span id="clock">--:--:--</span>
   </footer>
 
   <script src="app.js"></script>
+  <script src="onboarding.js"></script>
 </body>
 </html>

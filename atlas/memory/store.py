@@ -205,6 +205,25 @@ class VaultStore:
         except OSError:
             pass
 
+    def seed_owner(self, name: str) -> None:
+        """Personalize people/owner.md with the Owner's name during onboarding,
+        marked owner_edited so consolidation never overwrites it."""
+        name = (name or "Owner").strip() or "Owner"
+        p = self.vault / "people" / "owner.md"
+        today = date.today().isoformat()
+        body = (
+            f"---\ntype: person\ncreated: {today}\nupdated: {today}\n"
+            f"confidence: 1.0\nowner_edited: true\naliases: [Owner]\n---\n\n"
+            f"# {name}\n\nThe **Owner** of ATLAS.\n\n## Facts\n"
+            f"- Wake word for ATLAS is **\"Hey Atlas\"**.\n"
+            f"- Prefers concise, voice-friendly answers.\n"
+        )
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(body, encoding="utf-8")
+        except OSError:
+            pass
+
     def recent_turns(self, limit: int = 30) -> list[dict[str, Any]]:
         """Most recent conversation turns across date-named episodic files,
         oldest→newest — powers persistent chat history."""

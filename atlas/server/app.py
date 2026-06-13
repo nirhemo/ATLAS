@@ -266,6 +266,93 @@ def credits() -> dict[str, Any]:
         return {"available": False}
 
 
+class OnboardIn(BaseModel):
+    owner_name: str | None = None
+    identity_approved: bool = False
+    privacy_acknowledged: bool = False
+
+
+@app.get("/api/onboarding/status")
+def onboarding_status() -> dict[str, Any]:
+    """First-run state + pre-flight info the wizard needs (python, backend, voice)."""
+    import sys
+    from ..interface.voice import tts as tts_engine
+    s = cfg.settings()
+    ob = s.get("onboarding") or {}
+    return {
+        "completed": bool(ob.get("completed")),
+        "identity_approved": bool(ob.get("identity_approved")),
+        "privacy_acknowledged": bool(ob.get("privacy_acknowledged")),
+        "owner_name": (s.get("general") or {}).get("owner_name", "Owner"),
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "python_ok": sys.version_info >= (3, 10),
+        "has_backend": router.routing_enabled or router.backend != "offline",
+        "voice": {"models_present": tts_engine.models_present(),
+                  "lib": tts_engine.lib_present(), "downloading": tts_engine.downloading()},
+    }
+
+
+@app.post("/api/onboarding/complete")
+def onboarding_complete(body: OnboardIn) -> dict[str, Any]:
+    """Finalize first-run: persist consent flags, personalize owner.md, mark done."""
+    s = cfg.settings()
+    if body.owner_name:
+        s.setdefault("general", {})["owner_name"] = body.owner_name.strip()
+        vault.seed_owner(body.owner_name.strip())
+    s["onboarding"] = {"completed": True,
+                       "identity_approved": bool(body.identity_approved),
+                       "privacy_acknowledged": bool(body.privacy_acknowledged)}
+    cfg.save_settings(s)
+    _rebuild_core()
+    log_event("onboarding_complete", {"identity_approved": body.identity_approved,
+                                      "privacy_acknowledged": body.privacy_acknowledged})
+    return {"completed": True}
+
+
+class ApproveIn(BaseModel):
+    id: str
+
+
+@app.post("/api/connectors/approve")
+def approve_connector(body: ApproveIn) -> dict[str, Any]:
+    """Move a proposed L7 connector to 'installed' in the registry."""
+    import json as _json
+    reg = cfg.registry()
+    proposed = reg.get("proposed", [])
+    found = next((c for c in proposed if c.get("id") == body.id), None)
+    if not found:
+        raise HTTPException(status_code=404, detail=f"no proposed connector '{body.id}'")
+    reg["proposed"] = [c for c in proposed if c.get("id") != body.id]
+    reg.setdefault("installed", []).append({**found, "status": "installed"})
+    with cfg.REGISTRY_PATH.open("w", encoding="utf-8") as fh:
+        _json.dump(reg, fh, indent=2)
+        fh.write("\n")
+    _rebuild_core()
+    log_event("connector_approved", {"id": body.id})
+    return {"approved": body.id, "installed": [c["id"] for c in reg["installed"]]}
+
+
+@app.get("/api/voice/status")
+def voice_status() -> dict[str, Any]:
+    from ..interface.voice import tts as tts_engine
+    return {"available": tts_engine.available(), "models_present": tts_engine.models_present(),
+            "lib": tts_engine.lib_present(), "downloading": tts_engine.downloading(),
+            "voices": tts_engine.VOICES}
+
+
+@app.post("/api/tts/download")
+def tts_download() -> dict[str, Any]:
+    """Kick off a background download of the local-voice model files (~335MB)."""
+    import threading
+    from ..interface.voice import tts as tts_engine
+    if tts_engine.models_present():
+        return {"status": "present"}
+    if tts_engine.downloading():
+        return {"status": "downloading"}
+    threading.Thread(target=tts_engine.download, daemon=True).start()
+    return {"status": "started"}
+
+
 class TTSIn(BaseModel):
     text: str
     voice: str | None = None
@@ -290,25 +377,70 @@ def logs(limit: int = 200) -> list[dict[str, Any]]:
     return recent_events(max(1, min(limit, 1000)))
 
 
+def _err_detail(exc: Exception) -> str:
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    return {401: "Auth failed (401) — check your API key.",
+            402: "Out of credits (402) — top up the account.",
+            403: "Forbidden (403) — key lacks access to this model.",
+            404: "Model not found (404) — pick another model.",
+            429: "Rate limited (429) — try again shortly."}.get(
+        status, f"{type(exc).__name__} — connection or model error.")
+
+
+def _test_provider(provider: str) -> dict[str, Any]:
+    import httpx
+    m = cfg.settings()["model"]
+    if provider == "api":
+        key = os.environ.get(m.get("api_key_env", "ANTHROPIC_API_KEY")) or keychain_secret(m.get("api_key_ref"))
+        if not key:
+            return {"ok": False, "detail": "No Anthropic key — add one and retry."}
+        if router._client is None:
+            return {"ok": False, "detail": "Anthropic SDK unavailable (pip install anthropic) or key invalid."}
+        try:
+            router._client.messages.create(model=m.get("backend", "claude-sonnet-4-6"),
+                                            max_tokens=1, messages=[{"role": "user", "content": "ping"}])
+            return {"ok": True, "detail": "Claude reachable — full reasoning is live."}
+        except Exception as exc:
+            return {"ok": False, "detail": _err_detail(exc)}
+    if provider == "openrouter":
+        orc = m.get("openrouter") or {}
+        key = os.environ.get(orc.get("api_key_env", "OPENROUTER_API_KEY")) or keychain_secret(orc.get("api_key_ref"))
+        if not key:
+            return {"ok": False, "detail": "No OpenRouter key — add one and retry."}
+        try:
+            r = httpx.get("https://openrouter.ai/api/v1/credits",
+                          headers={"Authorization": f"Bearer {key}"}, timeout=6.0)
+            if r.status_code == 401:
+                return {"ok": False, "detail": "OpenRouter key rejected (401)."}
+            r.raise_for_status()
+            d = r.json().get("data", {})
+            rem = round((d.get("total_credits") or 0) - (d.get("total_usage") or 0), 2)
+            return {"ok": True, "detail": f"OpenRouter reachable — ${rem} credits."}
+        except Exception as exc:
+            return {"ok": False, "detail": _err_detail(exc)}
+    if provider == "local":
+        ep = ((m.get("local") or {}).get("endpoint") or "http://localhost:8080/v1").rstrip("/")
+        try:
+            r = httpx.get(f"{ep}/models", timeout=3.0)
+            r.raise_for_status()
+            return {"ok": True, "detail": f"Local server up — {len(r.json().get('data', []))} model(s) at {ep}."}
+        except Exception:
+            return {"ok": False, "detail": f"No local server at {ep} — start it with mlx_lm.server."}
+    return {"ok": False, "detail": "Offline mode — no backend to test."}
+
+
 @app.post("/api/backend/test")
-def backend_test() -> dict[str, Any]:
-    """Check whether the model backend is actually reachable. Sends a 1-token
-    ping to Claude if a client is configured; otherwise reports offline."""
-    key_env = cfg.settings()["model"].get("api_key_env", "ANTHROPIC_API_KEY")
-    key_present = bool(os.environ.get(key_env))
-    if router._client is None:
-        return {"ok": False, "key_present": key_present, "backend": "offline",
-                "detail": "No model client — set %s and reload." % key_env}
-    try:
-        router._client.messages.create(
-            model=cfg.settings()["model"].get("backend", "claude-sonnet-4-6"),
-            max_tokens=1, messages=[{"role": "user", "content": "ping"}],
-        )
-        return {"ok": True, "key_present": True, "backend": router.backend,
-                "detail": "Claude reachable — full reasoning is live."}
-    except Exception as exc:  # network / auth / model error
-        return {"ok": False, "key_present": key_present, "backend": router.backend,
-                "detail": "Backend error: %s" % type(exc).__name__}
+def backend_test(provider: str | None = None) -> dict[str, Any]:
+    """Test the backend is reachable, with a distinct error (auth / credits /
+    model / network). Tests `provider` if given, else the active mode (or the
+    routing 'daily' tier when routing is on)."""
+    m = cfg.settings()["model"]
+    if provider is None:
+        provider = (((m.get("routing") or {}).get("tiers") or {}).get("daily", {}).get("provider", "openrouter")
+                    if router.routing_enabled else m.get("mode", "api"))
+    out = _test_provider(provider)
+    out["backend"] = router.status_label()
+    return out
 
 
 @app.get("/api/models")

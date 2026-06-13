@@ -24,15 +24,64 @@ _ENGINE = None
 _TRIED = False
 
 
-def available() -> bool:
-    """True if the model files and kokoro-onnx are both present."""
-    if not (_ONNX.exists() and _VOICES.exists()):
-        return False
+_DOWNLOADING = False
+
+# Voice catalog for the onboarding/settings picker (bm_* = British, am_/af_ = US).
+VOICES = [
+    {"id": "bm_george", "label": "George (British male) — Jarvis-like"},
+    {"id": "bm_lewis", "label": "Lewis (British male)"},
+    {"id": "am_michael", "label": "Michael (US male)"},
+    {"id": "af_heart", "label": "Heart (US female)"},
+    {"id": "bf_emma", "label": "Emma (British female)"},
+]
+
+_MODEL_URLS = {
+    "kokoro-v1.0.onnx": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+    "voices-v1.0.bin": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+}
+
+
+def models_present() -> bool:
+    return _ONNX.exists() and _VOICES.exists()
+
+
+def downloading() -> bool:
+    return _DOWNLOADING
+
+
+def lib_present() -> bool:
     try:
         import kokoro_onnx  # noqa: F401
         return True
     except Exception:
         return False
+
+
+def available() -> bool:
+    """True if the model files and kokoro-onnx are both present."""
+    return models_present() and lib_present()
+
+
+def download() -> None:
+    """Fetch the Kokoro model files (~335MB) into ./models/. Blocking — run in a
+    thread. Idempotent and best-effort."""
+    global _DOWNLOADING
+    if _DOWNLOADING or models_present():
+        return
+    _DOWNLOADING = True
+    try:
+        import urllib.request
+        _DIR.mkdir(parents=True, exist_ok=True)
+        for name, url in _MODEL_URLS.items():
+            dest = _DIR / name
+            if not dest.exists():
+                tmp = dest.with_suffix(dest.suffix + ".part")
+                urllib.request.urlretrieve(url, tmp)
+                tmp.rename(dest)
+    except Exception:
+        pass
+    finally:
+        _DOWNLOADING = False
 
 
 def _engine():

@@ -6,6 +6,11 @@
     "timezone": "auto",
     "language": "en"
   },
+  "onboarding": {
+    "completed": false,
+    "identity_approved": false,
+    "privacy_acknowledged": false
+  },
   "voice": {
     "wake_word_enabled": true,
     "wake_word_model": "hey_jarvis",
