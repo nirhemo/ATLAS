@@ -710,6 +710,7 @@ function buildModelPane(model, md) {
   routingInput.dataset.path = "model.routing.enabled"; routingInput.dataset.type = "boolean"; routingInput.checked = !!r.enabled;
   const modeInput = document.createElement("input"); modeInput.type = "hidden";
   modeInput.dataset.path = "model.mode"; modeInput.dataset.type = "string"; modeInput.value = model.mode || "api";
+  let orLoaded = false;   // OpenRouter catalog fetched once per open
 
   // ── 1 · Strategy: one model, or route per task ──
   const stratSec = sec(); stratSec.appendChild(title("How ATLAS picks a model"));
@@ -747,9 +748,7 @@ function buildModelPane(model, md) {
   orSec.appendChild(orStatus);
   orFetch.addEventListener("click", async () => {
     orFetch.disabled = true; orFetch.textContent = "…";
-    const d = await getJSON("/api/openrouter/models", null);
-    if (d && d.ok) { fillDL(d.models); orStatus.innerHTML = `<span class="status-pill ok">loaded</span> ${d.count} models — start typing to search`; toast(`${d.count} OpenRouter models loaded`, "ok"); }
-    else { toast("Couldn't fetch OpenRouter models", "err"); }
+    await loadOR(true);
     orFetch.disabled = false; orFetch.textContent = "↻";
   });
   singleSec.appendChild(orSec);
@@ -808,11 +807,7 @@ function buildModelPane(model, md) {
   const rFetch = document.createElement("button"); rFetch.type = "button"; rFetch.className = "navbtn small";
   rFetch.textContent = "↻ load OpenRouter models"; routeSec.appendChild(rFetch);
   rFetch.addEventListener("click", async () => {
-    rFetch.disabled = true;
-    const d = await getJSON("/api/openrouter/models", null);
-    if (d && d.ok) { fillTierDL(d.models); toast(`${d.count} OpenRouter models loaded`, "ok"); }
-    else toast("Couldn't fetch OpenRouter models", "err");
-    rFetch.disabled = false;
+    rFetch.disabled = true; await loadOR(true); rFetch.disabled = false;
   });
   wrap.appendChild(routeSec);
 
@@ -831,6 +826,18 @@ function buildModelPane(model, md) {
   mAdv.body.appendChild(numberField("Temperature", "model.temperature", model.temperature));
   wrap.appendChild(mAdv.el);
 
+  // Auto-load the OpenRouter catalog (no key needed) so its model dropdowns are
+  // populated as soon as OpenRouter is in play — no manual ↻ click required.
+  async function loadOR(force) {
+    if (orLoaded && !force) return;
+    const d = await getJSON("/api/openrouter/models", null);
+    if (d && d.ok) {
+      fillDL(d.models); fillTierDL(d.models); orLoaded = true;
+      orStatus.innerHTML = `<span class="status-pill ok">loaded</span> ${d.count} OpenRouter models — type to search`;
+      if (force) toast(`${d.count} OpenRouter models loaded`, "ok");
+    } else if (force) toast("Couldn't fetch OpenRouter models", "err");
+  }
+
   // ── visibility wiring ──
   const setMode = (mode) => {
     modeInput.value = mode;
@@ -838,11 +845,13 @@ function buildModelPane(model, md) {
     orBtn.classList.toggle("active", mode === "openrouter");
     locBtn.classList.toggle("active", mode === "local");
     apiSec.hidden = mode !== "api"; orSec.hidden = mode !== "openrouter"; locSec.hidden = mode !== "local";
+    if (mode === "openrouter") loadOR();
   };
   const setStrategy = (smart) => {
     routingInput.checked = smart;
     singleBtn.classList.toggle("active", !smart); smartBtn.classList.toggle("active", smart);
     singleSec.hidden = smart; routeSec.hidden = !smart;
+    if (smart) loadOR();
   };
   apiBtn.addEventListener("click", () => setMode("api"));
   orBtn.addEventListener("click", () => setMode("openrouter"));

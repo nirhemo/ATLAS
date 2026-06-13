@@ -270,7 +270,10 @@ code{font-family:var(--mono);color:var(--accent);font-size:12px}
 /* compact per-task routing rows: label · provider · model on one line */
 .tier-row{display:grid;grid-template-columns:96px minmax(120px,140px) 1fr;gap:8px;align-items:center;margin:3px 0}
 .tier-row .tier-label{font-size:12px;color:var(--text);white-space:nowrap}
-.tier-row select,.tier-row input{width:100%;margin:0}
+.tier-row select,.tier-row input{width:100%;margin:0;min-width:0;
+  background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:8px;
+  color:var(--text);padding:7px 10px;font-family:var(--mono);font-size:13px;outline:none}
+.tier-row select:focus,.tier-row input:focus{border-color:var(--line-bright)}
 .code-hint code{display:inline-block;background:rgba(0,0,0,.4);padding:5px 9px;border-radius:6px;
   border:1px solid var(--line);margin-top:4px;white-space:pre-wrap;word-break:break-all;color:var(--accent)}
 .status-pill{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;
