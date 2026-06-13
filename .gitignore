@@ -12,6 +12,7 @@ atlas/memory/index.db-*
 
 # Daily event logs are runtime, machine-local
 atlas/logs/*.jsonl
+atlas/logs/*.log
 
 # Date-named episodic transcripts are runtime data (example.jsonl is committed)
 atlas/memory/episodic/[0-9]*.jsonl

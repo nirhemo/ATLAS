@@ -336,7 +336,9 @@ def approve_connector(body: ApproveIn) -> dict[str, Any]:
 def update_check() -> dict[str, Any]:
     """How far behind GitHub the running code is, with a changelog."""
     from ..engine.updater import check
-    return check()
+    d = check()
+    d["supervised"] = bool(os.environ.get("ATLAS_SUPERVISED"))  # can we auto-restart?
+    return d
 
 
 @app.post("/api/update/apply")
@@ -345,6 +347,26 @@ def update_apply(confirm: bool = False) -> dict[str, Any]:
     health-checks, and auto-rolls-back on failure. Owner data is never touched."""
     from ..engine.updater import apply
     return apply(confirm=confirm)
+
+
+@app.post("/api/restart")
+def restart() -> dict[str, Any]:
+    """Exit so the launchd supervisor respawns ATLAS with fresh code. Only works
+    when supervised (ATLAS_SUPERVISED set by the LaunchAgent); otherwise the
+    owner must restart manually."""
+    import threading
+    import time
+    if not os.environ.get("ATLAS_SUPERVISED"):
+        raise HTTPException(status_code=409,
+                            detail="Not supervised — restart ATLAS manually (or install deploy/install-service.sh).")
+    log_event("restart_requested", {})
+
+    def _exit_soon():
+        time.sleep(1.0)   # let this response flush first
+        os._exit(0)       # KeepAlive=true → launchd restarts us with the new code
+
+    threading.Thread(target=_exit_soon, daemon=True).start()
+    return {"restarting": True}
 
 
 @app.get("/api/voice/status")

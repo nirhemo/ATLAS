@@ -76,6 +76,7 @@ async function renderUpdate() {
     box.innerHTML = `<span class="status-pill ok">up to date</span> <span class="muted small">v${d.current_version} · ${d.current_commit}</span>`;
     return;
   }
+  const supervised = !!d.supervised;
   box.innerHTML = `<span class="status-pill warn">update available</span> <span class="muted small">${d.behind} new commit(s)</span> <button class="navbtn small" id="updBtn">⬆ Update</button>`;
   $("#updBtn").addEventListener("click", async () => {
     const btn = $("#updBtn"); btn.disabled = true; btn.textContent = "updating…";
@@ -84,8 +85,18 @@ async function renderUpdate() {
       const r = await fetch(API + "/api/update/apply?confirm=true", { method: "POST", signal: AbortSignal.timeout(600000) });
       const res = await r.json();
       if (res.applied) {
-        toast(`Updated to v${res.to_version} — restart ATLAS to load it`, "ok");
-        box.innerHTML = `<span class="status-pill ok">updated</span> <span class="muted small">restart to load v${res.to_version}</span>`;
+        toast(`Updated to v${res.to_version}`, "ok");
+        if (supervised) {
+          box.innerHTML = `<span class="status-pill ok">updated</span> <button class="navbtn small" id="restartBtn">↻ Restart now</button>`;
+          $("#restartBtn").addEventListener("click", async () => {
+            const rb = $("#restartBtn"); rb.disabled = true; rb.textContent = "restarting…";
+            toast("Restarting ATLAS to load the update…");
+            try { await fetch(API + "/api/restart", { method: "POST" }); } catch {}
+            setTimeout(() => location.reload(), 4000);   // launchd respawns; reconnect
+          });
+        } else {
+          box.innerHTML = `<span class="status-pill ok">updated</span> <span class="muted small">restart ATLAS to load v${res.to_version}</span>`;
+        }
       } else if (res.rolled_back) {
         toast("Update failed health check — rolled back, nothing lost", "err");
         btn.disabled = false; btn.textContent = "⬆ Update";
