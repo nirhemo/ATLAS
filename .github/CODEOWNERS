@@ -1,0 +1,16 @@
+# Code owners for ATLAS.
+#
+# Combined with branch protection's "Require review from Code Owners", this makes
+# the owner the mandatory approver: no pull request can merge into `main` without
+# @nirhemo's review. Contributors open PRs (from forks); only the owner approves.
+
+# Default — every change in the repo needs the owner's review.
+*                          @nirhemo
+
+# Sensitive areas, called out explicitly: identity, safety/connectors, licensing,
+# and the CI/governance config are the owner's to approve.
+/LICENSE                   @nirhemo
+/CONTRIBUTING.md           @nirhemo
+/.github/                  @nirhemo
+/atlas/core/identity.md    @nirhemo
+/atlas/connectors/         @nirhemo
