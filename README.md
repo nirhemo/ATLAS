@@ -7,9 +7,9 @@ never rebuilt**. Bring your own model: a **free local model**, **OpenRouter**, o
 the **Claude API**.
 
 > **Status:** v0.2.0 · runs offline-degraded out of the box; add a model in the
-> first-run wizard for full reasoning. **Source-available** under the
-> [PolyForm Noncommercial License 1.0.0](LICENSE) — free for non-commercial use;
-> **commercial licensing available from Nir Hemo**.
+> first-run wizard for full reasoning. **Free & source-available** under the
+> [PolyForm Noncommercial License 1.0.0](LICENSE) — free to use, modify, and share
+> for any **non-commercial** purpose; **commercial use is not permitted**.
 
 ---
 

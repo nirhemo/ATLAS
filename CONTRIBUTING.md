@@ -38,19 +38,11 @@ and download the model files into `atlas/interface/voice/models/` (see
 
 ## Licensing of contributions
 
-ATLAS is **source-available** under the
+ATLAS is **free & source-available** under the
 [PolyForm Noncommercial License 1.0.0](LICENSE) — free to use, modify, and share
-for non-commercial purposes. Commercial licenses are offered separately by the
-maintainer, **Nir Hemo**.
+for any **non-commercial** purpose; **commercial use is not permitted**.
 
-By submitting a contribution, you agree that:
-
-- your contribution is licensed to the project under the **PolyForm Noncommercial
-  License**, and
-- you grant the maintainer (**Nir Hemo**) a perpetual, worldwide, irrevocable,
-  royalty-free right to use, reproduce, modify, and **relicense your contribution —
-  including under commercial terms** — so ATLAS can be offered under commercial
-  licenses alongside the noncommercial one.
-
-(This is a lightweight inbound license grant, not legal advice. If you can't agree
-to it, please open an issue to discuss before submitting code.)
+By submitting a contribution, you agree that your contribution is licensed under
+the same **PolyForm Noncommercial License** as the rest of the project
+(inbound = outbound). This is not legal advice; if you can't agree to it, please
+open an issue to discuss before submitting code.
