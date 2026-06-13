@@ -59,7 +59,8 @@ def test_chat_offline_recall(tmp_path):
 def test_chat_remember_preserves_fact_with_leading_space():
     # Regression: leading whitespace used to desync the match offset and garble
     # the remembered fact. The reply should confirm, not crash or truncate.
-    r = client.post("/api/chat", json={"text": "  remember my locker code is 4831"})
+    # Fixture is deliberately non-sensitive — never use real personal data here.
+    r = client.post("/api/chat", json={"text": "  remember that I prefer tea over coffee"})
     assert r.status_code == 200
     assert "remember" in r.json()["tools_used"]
 

@@ -80,6 +80,9 @@ class ToolBox:
     def _t_remember(self, args: dict[str, Any]) -> str:
         return self.vault.remember(args.get("fact", ""), args.get("entity"))
 
+    def _t_forget(self, args: dict[str, Any]) -> str:
+        return self.vault.forget(args.get("fact"), args.get("entity"))
+
     def _t_web_search(self, args: dict[str, Any]) -> str:
         from ..connectors.web_search import search
         return search(args.get("query", ""))

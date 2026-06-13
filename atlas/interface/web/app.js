@@ -246,7 +246,7 @@ async function ask(text, { speak = false } = {}) {
   try {
     const r = await fetch(API + "/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }), signal: AbortSignal.timeout(60000)
+      body: JSON.stringify({ text, session: sessionId() }), signal: AbortSignal.timeout(60000)
     });
     const data = await r.json();
     thinking.remove();
@@ -841,6 +841,17 @@ $("#backendTest").addEventListener("click", async () => {
   } catch { toast("Test failed — core not reachable", "err"); }
   finally { btn.disabled = false; btn.textContent = "Test"; }
 });
+
+/* ---------- stable session id (so conversation history accumulates) ---------- */
+function sessionId() {
+  let s = localStorage.getItem("atlas_session");
+  if (!s) {
+    s = "web-" + (crypto.randomUUID ? crypto.randomUUID()
+                  : Date.now().toString(36) + Math.random().toString(36).slice(2));
+    try { localStorage.setItem("atlas_session", s); } catch {}
+  }
+  return s;
+}
 
 /* ---------- live state via WebSocket (optional) ---------- */
 function connectWS() {

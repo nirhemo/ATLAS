@@ -55,6 +55,8 @@
     "episodic_path": "atlas/memory/episodic",
     "index_db": "atlas/memory/index.db",
     "retrieval_top_k": 6,
+    "history_turns": 8,
+    "decay_days": 30,
     "consolidation_time": "03:00",
     "memory_writing_paused": false
   },

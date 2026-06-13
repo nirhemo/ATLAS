@@ -33,7 +33,15 @@ atlas/interface/voice/models/
 # self-updater pull new code without ever touching the owner's data/settings.
 atlas/config/settings.json
 atlas/connectors/registry.json
-atlas/memory/vault/people/owner.md
+
+# MemVault: live per-user notes are NEVER committed — consolidation and the
+# onboarding seed write the owner's personal facts here. Only the directory
+# READMEs and *.example.* seed notes are tracked.
+atlas/memory/vault/preferences/
+atlas/memory/vault/decisions/
+atlas/memory/vault/topics/
+atlas/memory/vault/people/*.md
+!atlas/memory/vault/people/*.example.md
 
 # Local Claude Code session dir
 .claude/

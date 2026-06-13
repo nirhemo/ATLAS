@@ -141,6 +141,38 @@ class Router:
     def backend(self) -> str:
         return "offline" if self._mode == "offline" else self._backend
 
+    def _system_prompt(self) -> str:
+        """Identity + a live snapshot of what ATLAS knows about its owner, so saved
+        preferences (units, language, tone, …) actually shape every reply. Without
+        this, memory is write-only and the owner has to repeat themselves."""
+        base = _identity_prompt()
+        try:
+            mem = self.vault.context_block()
+        except Exception:
+            mem = ""
+        if not mem:
+            return base
+        return (base
+                + "\n\n# What you know about your owner\n"
+                + "Apply these standing facts and preferences in every reply "
+                  "(e.g. units, language, tone, formatting). When the owner states a "
+                  "new standing preference or asks you to remember something, call "
+                  "the `remember` tool so it persists. When they change or retract "
+                  "one, call `forget` for the old fact, then `remember` the new.\n\n"
+                + mem)
+
+    def _history(self, session: str) -> list[dict[str, Any]]:
+        """Recent (user, assistant) message pairs for this session — ATLAS's
+        short-term conversational memory, so it remembers what was just said.
+        Bounded by memory.history_turns (default 8) to keep the prompt cheap."""
+        if not session:
+            return []
+        n = (self.settings.get("memory") or {}).get("history_turns", 8)
+        try:
+            return self.vault.history_messages(session, limit=n)
+        except Exception:
+            return []
+
     # ----- public API --------------------------------------------------- #
     def chat(self, text: str, *, session: str = "s_000", turn: int = 1,
              channel: str = "chat", confirmed: bool = False) -> dict[str, Any]:
@@ -153,15 +185,16 @@ class Router:
             model = tcfg.get("model")
             if model:
                 reply, used, mem_hit = self._chat_routed(
-                    text, provider=tcfg.get("provider", "openrouter"), model=model, confirmed=confirmed)
+                    text, provider=tcfg.get("provider", "openrouter"), model=model,
+                    confirmed=confirmed, session=session)
                 backend = model
                 self._last_routed = model
             else:  # misconfigured tier → fall back to the single mode
                 tier = None
-                reply, used, mem_hit = self._dispatch_mode(text, confirmed=confirmed)
+                reply, used, mem_hit = self._dispatch_mode(text, confirmed=confirmed, session=session)
                 backend = self.backend
         else:
-            reply, used, mem_hit = self._dispatch_mode(text, confirmed=confirmed)
+            reply, used, mem_hit = self._dispatch_mode(text, confirmed=confirmed, session=session)
             backend = self.backend
 
         latency_ms = round((time.monotonic() - t0) * 1000)
@@ -177,18 +210,19 @@ class Router:
         return {"reply": reply, "backend": backend, "tier": tier,
                 "latency_ms": latency_ms, "tools_used": used}
 
-    def _dispatch_mode(self, text: str, *, confirmed: bool) -> tuple[str, list[str], int | None]:
+    def _dispatch_mode(self, text: str, *, confirmed: bool,
+                       session: str = "") -> tuple[str, list[str], int | None]:
         """Single-backend dispatch (when routing is off)."""
         if self._mode == "api" and self._client is not None:
-            return self._chat_claude(text, confirmed=confirmed)
+            return self._chat_claude(text, confirmed=confirmed, session=session)
         if self._mode == "openrouter":
-            return self._chat_openrouter(text, confirmed=confirmed)
+            return self._chat_openrouter(text, confirmed=confirmed, session=session)
         if self._mode == "local":
-            return self._chat_local(text, confirmed=confirmed)
+            return self._chat_local(text, confirmed=confirmed, session=session)
         return self._chat_offline(text, confirmed=confirmed)
 
     def _chat_routed(self, text: str, *, provider: str, model: str,
-                     confirmed: bool) -> tuple[str, list[str], int | None]:
+                     confirmed: bool, session: str = "") -> tuple[str, list[str], int | None]:
         """Dispatch one turn to a specific (provider, model) chosen by the router."""
         m = self.settings["model"]
         if provider == "openrouter":
@@ -196,7 +230,7 @@ class Router:
             key = os.environ.get(orc.get("api_key_env", "OPENROUTER_API_KEY")) \
                 or keychain_secret(orc.get("api_key_ref"))
             return self._chat_openai_compatible(
-                text, confirmed=confirmed,
+                text, confirmed=confirmed, session=session,
                 endpoint=orc.get("endpoint", "https://openrouter.ai/api/v1"),
                 model=model, auth_key=key,
                 extra_headers={"HTTP-Referer": "https://github.com/nirhemo/ATLAS", "X-Title": "ATLAS"},
@@ -204,30 +238,33 @@ class Router:
         if provider == "local":
             local = m.get("local") or {}
             return self._chat_openai_compatible(
-                text, confirmed=confirmed,
+                text, confirmed=confirmed, session=session,
                 endpoint=local.get("endpoint", "http://localhost:8080/v1"), model=model,
                 offline_note="Local model server isn't reachable. Answering offline meanwhile.")
         if provider == "api" and self._client is not None:
-            return self._chat_claude(text, confirmed=confirmed, model_override=model)
+            return self._chat_claude(text, confirmed=confirmed, model_override=model, session=session)
         reply, used, mh = self._chat_offline(text, confirmed=confirmed)
         return (f"(The '{provider}' backend for this task tier isn't available — "
                 "answering offline.)\n\n" + reply), used, mh
 
     # ----- Claude path -------------------------------------------------- #
-    def _chat_claude(self, text: str, *, confirmed: bool,
-                     model_override: str | None = None) -> tuple[str, list[str], int | None]:
+    def _chat_claude(self, text: str, *, confirmed: bool, model_override: str | None = None,
+                     session: str = "") -> tuple[str, list[str], int | None]:
         model = model_override or self.settings["model"].get("backend", "claude-sonnet-4-6")
         max_tokens = self.settings["model"].get("max_tokens", 1024)
         # Opus 4.7+/Fable reject `temperature` (HTTP 400) — only send it when allowed.
         extra: dict[str, Any] = ({} if any(t in model for t in _NO_TEMPERATURE)
                                  else {"temperature": self.settings["model"].get("temperature", 0.4)})
-        messages: list[dict[str, Any]] = [{"role": "user", "content": text}]
+        # Prepend recent session turns so ATLAS remembers the conversation so far.
+        sys_prompt = self._system_prompt()   # computed once, reused across the loop
+        messages: list[dict[str, Any]] = [*self._history(session),
+                                          {"role": "user", "content": text}]
         used: list[str] = []
         mem_hit: int | None = None
 
         for _ in range(5):  # bounded tool loop
             resp = self._client.messages.create(
-                model=model, max_tokens=max_tokens, system=_identity_prompt(),
+                model=model, max_tokens=max_tokens, system=sys_prompt,
                 tools=anthropic_tools(), messages=messages, **extra,
             )
             if resp.stop_reason != "tool_use":
@@ -251,23 +288,25 @@ class Router:
         return "I got stuck in a tool loop — let me stop there.", used, mem_hit
 
     # ----- OpenAI-compatible paths (local MLX + OpenRouter) ------------- #
-    def _chat_local(self, text: str, *, confirmed: bool) -> tuple[str, list[str], int | None]:
+    def _chat_local(self, text: str, *, confirmed: bool,
+                    session: str = "") -> tuple[str, list[str], int | None]:
         """Local OpenAI-compatible server (mlx-lm / LM Studio / Ollama)."""
         local = self.settings["model"].get("local") or {}
         return self._chat_openai_compatible(
-            text, confirmed=confirmed,
+            text, confirmed=confirmed, session=session,
             endpoint=local.get("endpoint", "http://localhost:8080/v1"),
             model=local.get("model"),
             offline_note="My local model server isn't reachable — start it with "
                          "`mlx_lm.server`. Answering in offline mode meanwhile.")
 
-    def _chat_openrouter(self, text: str, *, confirmed: bool) -> tuple[str, list[str], int | None]:
+    def _chat_openrouter(self, text: str, *, confirmed: bool,
+                         session: str = "") -> tuple[str, list[str], int | None]:
         """OpenRouter — OpenAI-compatible cloud gateway (Bearer key)."""
         orc = self.settings["model"].get("openrouter") or {}
         key = os.environ.get(orc.get("api_key_env", "OPENROUTER_API_KEY")) \
             or keychain_secret(orc.get("api_key_ref"))
         return self._chat_openai_compatible(
-            text, confirmed=confirmed,
+            text, confirmed=confirmed, session=session,
             endpoint=orc.get("endpoint", "https://openrouter.ai/api/v1"),
             model=orc.get("model"),
             auth_key=key,
@@ -280,6 +319,7 @@ class Router:
                                 model: str | None, auth_key: str | None = None,
                                 extra_headers: dict[str, str] | None = None,
                                 offline_note: str = "Backend unreachable.",
+                                session: str = "",
                                 ) -> tuple[str, list[str], int | None]:
         """Shared OpenAI-compatible chat with a bounded tool loop — same tools as
         the Claude path (get_time, memory_search, remember, web_search). On any
@@ -295,7 +335,8 @@ class Router:
         if extra_headers:
             headers.update(extra_headers)
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": _identity_prompt()},
+            {"role": "system", "content": self._system_prompt()},
+            *self._history(session),
             {"role": "user", "content": text},
         ]
         used: list[str] = []
@@ -358,6 +399,11 @@ class Router:
         if m:
             fact = m.group(1).strip()
             return self.tools.dispatch("remember", {"fact": fact}), ["remember"], None
+
+        m = re.match(r"(?:forget|delete)\s+(?:that\s+|about\s+)?(.+)", stripped,
+                     re.IGNORECASE | re.DOTALL)
+        if m:
+            return self.tools.dispatch("forget", {"fact": m.group(1).strip()}), ["forget"], None
 
         # try memory recall for "what/who/where is my ..." style questions
         if re.search(r"\b(my|who|what|where|name|remember|know)\b", low):
