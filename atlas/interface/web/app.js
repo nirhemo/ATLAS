@@ -305,25 +305,49 @@ function browserSpeak(text) {
   u.onerror = () => afterSpeak();
   setState("speaking"); speechSynthesis.speak(u);
 }
+/* Turn a written reply (which may contain markdown, citation markers, URLs) into
+   clean prose for the voice — so ATLAS never reads "asterisk asterisk" or
+   "bracket 1 dagger" aloud. The chat bubble still shows the original text. */
+function speechClean(s) {
+  if (!s) return "";
+  return String(s)
+    .replace(/```[\s\S]*?```/g, " — code shown on screen — ")  // fenced code
+    .replace(/【[^】]*】/g, "")                                   // 【1†L1-L4】 markers
+    .replace(/\[\^?\d+\]/g, "")                                   // [1] [^2] refs
+    .replace(/!?\[([^\]]+)\]\([^)]+\)/g, "$1")                    // [text](url) -> text
+    .replace(/\bhttps?:\/\/\S+/g, "")                             // bare URLs
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")                           // # headings
+    .replace(/^\s*[-*•]\s+/gm, "")                                // bullets
+    .replace(/^\s*\d+\.\s+/gm, "")                                // numbered lists
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")                           // **bold** / __bold__
+    .replace(/(\*|_)(?=\S)(.*?)(?<=\S)\1/g, "$2")                 // *italic* / _italic_
+    .replace(/`([^`]+)`/g, "$1")                                  // `code`
+    .replace(/[*_#`>~|]/g, " ")                                   // stray markup
+    .replace(/\s*&\s*/g, " and ")
+    .replace(/\n{2,}/g, ". ").replace(/\n/g, ", ")                // line breaks -> speech pauses
+    .replace(/\s+([.,!?;:])/g, "$1").replace(/\s{2,}/g, " ").trim();
+}
+
 /* Primary voice: clean on-device neural TTS (Kokoro) served by /api/tts.
    Falls back to the OS voice if the local model isn't installed. */
 async function speakReply(text) {
-  if (!text) { setState("idle"); resumeWake(); return; }
+  const spoken = speechClean(text);
+  if (!spoken) { setState("idle"); resumeWake(); return; }
   stopSpeaking();
   setState("speaking");
   try {
     const r = await fetch(API + "/api/tts", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }), signal: AbortSignal.timeout(20000),
+      body: JSON.stringify({ text: spoken }), signal: AbortSignal.timeout(20000),
     });
     if (!r.ok) throw 0;                                  // 503 → no local voice
     const url = URL.createObjectURL(await r.blob());
     const audio = new Audio(url); currentAudio = audio;
     audio.onended = () => { URL.revokeObjectURL(url); if (currentAudio === audio) currentAudio = null; afterSpeak(); };
-    audio.onerror = () => { URL.revokeObjectURL(url); currentAudio = null; browserSpeak(text); };
+    audio.onerror = () => { URL.revokeObjectURL(url); currentAudio = null; browserSpeak(spoken); };
     await audio.play();
   } catch {
-    browserSpeak(text);
+    browserSpeak(spoken);
   }
 }
 $("#orb").addEventListener("click", () => {
