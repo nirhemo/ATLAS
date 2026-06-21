@@ -121,3 +121,4 @@ commercial license is available — contact **Nir Hemo**.
 ---
 
 *Built with love by **Nir Hemo**, with contributions from **[RepoWise.ai](https://repowise.ai)**.*
+<img width="932" height="370" alt="Logo" src="https://github.com/user-attachments/assets/ec061ca3-8b58-4e77-9fc1-50aa82f5dcca" />
