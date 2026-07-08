@@ -63,7 +63,9 @@
   "upgrade": {
     "approval_level": "PATCH_only",
     "cycle_schedule": "nightly@03:00",
-    "meta_recursion_every_n_cycles": 10
+    "meta_recursion_every_n_cycles": 10,
+    "auto_apply": false,
+    "auto_restart": true
   },
   "connectors": {
     "registry_path": "atlas/connectors/registry.json"
