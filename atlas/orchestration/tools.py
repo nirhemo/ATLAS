@@ -50,6 +50,7 @@ class ToolBox:
                  registry: ConnectorRegistry | None = None):
         self.vault = vault or VaultStore()
         self.registry = registry or ConnectorRegistry()
+        self.last_media: dict[str, Any] | None = None  # visuals from the last web search
 
     def dispatch(self, name: str, args: dict[str, Any], *,
                  confirmed: bool = False) -> str:
@@ -84,8 +85,17 @@ class ToolBox:
         return self.vault.forget(args.get("fact"), args.get("entity"))
 
     def _t_web_search(self, args: dict[str, Any]) -> str:
-        from ..connectors.web_search import search
-        return search(args.get("query", ""))
+        from ..connectors.web_search import rich
+        data = rich(args.get("query", ""))
+        # Stash visuals (images + top article) for the HUD; the model gets the text.
+        self.last_media = {"type": "search", "query": data.get("query"),
+                           "images": data.get("images") or [], "article": data.get("article")}
+        return data.get("text", "")
+
+    def _t_read_article(self, args: dict[str, Any]) -> str:
+        from ..connectors.web_search import read_article
+        url = args.get("url") or ((self.last_media or {}).get("article") or {}).get("url", "")
+        return read_article(url)
 
     def _t_atlas_status(self, args: dict[str, Any]) -> str:
         """Introspect ATLAS's own layers/state so the model can answer questions

@@ -274,6 +274,28 @@ code{font-family:var(--mono);color:var(--accent);font-size:12px}
   background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:8px;
   color:var(--text);padding:7px 10px;font-family:var(--mono);font-size:13px;outline:none}
 .tier-row select:focus,.tier-row input:focus{border-color:var(--line-bright)}
+/* ---------- search visuals: floating related photos + article card ---------- */
+.search-visuals{position:fixed;inset:0;z-index:6;pointer-events:none;overflow:hidden}
+.float-photo{position:absolute;width:118px;height:118px;object-fit:cover;border-radius:14px;
+  border:1px solid var(--line-bright);box-shadow:0 10px 34px rgba(0,0,0,.5),0 0 0 1px rgba(0,224,255,.15);
+  pointer-events:auto;cursor:pointer;opacity:0;
+  animation:photoIn .5s ease forwards,floaty 7s ease-in-out infinite;transition:transform .2s,box-shadow .2s}
+.float-photo:hover{transform:scale(1.07);box-shadow:0 14px 44px rgba(0,0,0,.6),0 0 0 1px var(--accent);z-index:2}
+@keyframes photoIn{to{opacity:.92}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+@media (max-width:900px){.float-photo{width:82px;height:82px}}
+.article-card{position:fixed;right:22px;bottom:22px;z-index:8;width:344px;max-width:calc(100vw - 32px);
+  border-radius:16px;overflow:hidden;display:flex;flex-direction:column;opacity:0;animation:photoIn .4s ease forwards}
+.artc-hero{height:150px;background-size:cover;background-position:center;border-bottom:1px solid var(--line)}
+.artc-body{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.artc-title{font-weight:600;font-size:15px;line-height:1.35}
+.artc-sum{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5;
+  display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.artc-actions{display:flex;gap:8px;align-items:center;margin-top:2px}
+.artc-close{position:absolute;top:8px;right:8px;z-index:2;background:rgba(2,4,10,.55);
+  border:1px solid var(--line);color:var(--text);width:26px;height:26px;border-radius:50%;
+  cursor:pointer;font-size:12px;line-height:1}
+.artc-close:hover{border-color:var(--accent);color:var(--accent)}
 .code-hint code{display:inline-block;background:rgba(0,0,0,.4);padding:5px 9px;border-radius:6px;
   border:1px solid var(--line);margin-top:4px;white-space:pre-wrap;word-break:break-all;color:var(--accent)}
 .status-pill{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;
