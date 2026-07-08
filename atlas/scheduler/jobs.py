@@ -103,19 +103,50 @@ def purge_episodic() -> dict[str, Any]:
 
 
 def run_upgrade_cycle() -> dict[str, Any]:
-    """Nightly cycle (Section 3): check git for new ATLAS code and record whether
-    an update is available. Applying is owner-gated (the HUD's Update button) —
-    we never auto-apply unattended."""
-    from ..engine.updater import check
-    info = check()
-    log_event("upgrade", {
-        "status": "checked",
-        "update_available": info.get("update_available", False),
-        "behind": info.get("behind", 0),
-        "current_version": info.get("current_version"),
-    })
-    return {"status": "checked", "update_available": info.get("update_available", False),
-            "behind": info.get("behind", 0)}
+    """Nightly cycle (Section 3): check GitHub for new ATLAS code. If
+    `upgrade.auto_apply` is on, apply it (backup → health-check → auto-rollback);
+    if `upgrade.auto_restart` is on and a supervisor is present (ATLAS_SUPERVISED
+    via the LaunchAgent), exit so launchd respawns with the new code. Otherwise it
+    just records that an update is available for the Owner to apply from the HUD."""
+    import os
+    from ..engine import updater
+    up = cfg.settings().get("upgrade", {}) or {}
+    info = updater.check()
+    if not info.get("update_available"):
+        log_event("upgrade", {"status": "up_to_date", "current_version": info.get("current_version")})
+        return {"status": "up_to_date", "current_version": info.get("current_version")}
+
+    if not up.get("auto_apply"):
+        log_event("upgrade", {"status": "update_available", "behind": info.get("behind", 0),
+                              "auto_apply": False})
+        return {"status": "update_available", "behind": info.get("behind", 0)}
+
+    res = updater.apply(confirm=True)
+    log_event("upgrade", {"status": "applied" if res.get("applied") else "not_applied",
+                          "applied": res.get("applied", False),
+                          "rolled_back": res.get("rolled_back", False),
+                          "to_version": res.get("to_version"), "detail": res.get("detail")})
+    restarting = False
+    if res.get("applied") and up.get("auto_restart", True) and os.environ.get("ATLAS_SUPERVISED"):
+        _restart_for_update()
+        restarting = True
+    return {"status": "applied" if res.get("applied") else "failed",
+            "applied": res.get("applied", False), "rolled_back": res.get("rolled_back", False),
+            "to_version": res.get("to_version"), "restarting": restarting, "detail": res.get("detail")}
+
+
+def _restart_for_update() -> None:
+    """Exit so the launchd supervisor (KeepAlive) respawns ATLAS with the new code.
+    Runs in a daemon thread after a short delay so the job result flushes first."""
+    import os
+    import threading
+    import time
+
+    def _bye() -> None:
+        time.sleep(2.0)
+        os._exit(0)   # KeepAlive=true → launchd restarts us on the new code
+
+    threading.Thread(target=_bye, daemon=True).start()
 
 
 def default_handlers() -> dict[str, Callable[[], Any]]:
