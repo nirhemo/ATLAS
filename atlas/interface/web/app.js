@@ -253,6 +253,7 @@ async function ask(text, { speak = false } = {}) {
     const reply = data.reply || "(no reply)";
     addMsg("atlas", reply);
     setTranscript(`<span class="atlas">ATLAS:</span> ${reply}`);
+    renderSearchMedia(data.media);
     if (speak) speakReply(reply); else setState("idle");
   } catch {
     thinking.remove();
@@ -1016,6 +1017,57 @@ $("#backendTest").addEventListener("click", async () => {
   } catch { toast("Test failed — core not reachable", "err"); }
   finally { btn.disabled = false; btn.textContent = "Test"; }
 });
+
+/* ---------- search visuals: floating related photos + article card ---------- */
+function renderSearchMedia(media) {
+  const wrap = $("#searchVisuals"), card = $("#articleCard");
+  if (!wrap || !card) return;
+  wrap.innerHTML = "";                         // clear previous search's photos
+  if (!media || (!(media.images && media.images.length) && !media.article)) { card.hidden = true; return; }
+
+  // floating related photos, scattered around the edges (away from the orb)
+  const spots = [[6, 16], [80, 12], [9, 58], [83, 54], [40, 6], [63, 70], [22, 82], [72, 84]];
+  (media.images || []).slice(0, 6).forEach((im, i) => {
+    const el = document.createElement("img");
+    el.className = "float-photo"; el.loading = "lazy";
+    el.src = im.thumbnail || im.image; el.alt = im.title || "";
+    if (im.title) el.title = im.title;
+    const [x, y] = spots[i % spots.length];
+    el.style.left = x + "%"; el.style.top = y + "%";
+    el.style.animationDelay = `${i * 0.35}s, ${i * 0.6}s`;   // photoIn, floaty
+    el.addEventListener("click", () => window.open(im.source || im.image, "_blank", "noopener"));
+    el.addEventListener("error", () => el.remove());
+    wrap.appendChild(el);
+  });
+
+  // top article card (hero + title + summary + Open + TLDR)
+  const a = media.article;
+  if (a && a.url) {
+    card.innerHTML = "";
+    const close = document.createElement("button");
+    close.className = "artc-close"; close.title = "Close"; close.textContent = "✕";
+    close.addEventListener("click", () => { card.hidden = true; });
+    card.appendChild(close);
+    if (a.image) {
+      const hero = document.createElement("div"); hero.className = "artc-hero";
+      hero.style.backgroundImage = `url("${String(a.image).replace(/"/g, "%22")}")`;
+      card.appendChild(hero);
+    }
+    const body = document.createElement("div"); body.className = "artc-body";
+    const title = document.createElement("div"); title.className = "artc-title"; title.textContent = a.title || "Article";
+    const sum = document.createElement("p"); sum.className = "artc-sum"; sum.textContent = a.summary || "";
+    const actions = document.createElement("div"); actions.className = "artc-actions";
+    const open = document.createElement("a");
+    open.className = "navbtn small primary"; open.target = "_blank"; open.rel = "noopener";
+    open.href = a.url; open.textContent = "Open article ↗";
+    const tldr = document.createElement("button");
+    tldr.className = "navbtn small"; tldr.textContent = "TLDR";
+    tldr.addEventListener("click", () => ask(`Give me a short TLDR of this article: ${a.url}`, true));
+    actions.append(open, tldr);
+    body.append(title, sum, actions); card.appendChild(body);
+    card.hidden = false;
+  } else card.hidden = true;
+}
 
 /* ---------- stable session id (so conversation history accumulates) ---------- */
 function sessionId() {

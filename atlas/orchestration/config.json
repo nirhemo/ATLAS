@@ -87,8 +87,15 @@
       "name": "web_search",
       "risk": "READ",
       "connector": "web",
-      "description": "Search the web for current information. Summarize results with sources.",
+      "description": "Search the web for current information. Summarize results with sources. The top related images and article are shown to the Owner on the HUD automatically.",
       "input_schema": { "type": "object", "properties": { "query": { "type": "string" } }, "required": ["query"] }
+    },
+    {
+      "name": "read_article",
+      "risk": "READ",
+      "connector": "web",
+      "description": "Fetch and read the full text of an article so you can summarize it, give a TLDR, or read it aloud. Use when the Owner says things like 'read that article', 'summarize it', or 'TLDR'. Omit url to use the most recent search's top article.",
+      "input_schema": { "type": "object", "properties": { "url": { "type": "string" } } }
     }
   ],
   "risk_policy": {

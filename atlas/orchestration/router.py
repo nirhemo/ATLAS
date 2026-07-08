@@ -177,6 +177,7 @@ class Router:
     def chat(self, text: str, *, session: str = "s_000", turn: int = 1,
              channel: str = "chat", confirmed: bool = False) -> dict[str, Any]:
         t0 = time.monotonic()
+        self.tools.last_media = None   # cleared each turn; set if web_search runs
         tier = None
         if self.routing_enabled:
             tier = classify_tier(text)
@@ -208,7 +209,8 @@ class Router:
                             backend=(f"{tier}:{backend}" if tier else backend),
                             tools=used, session=session, turn=turn)
         return {"reply": reply, "backend": backend, "tier": tier,
-                "latency_ms": latency_ms, "tools_used": used}
+                "latency_ms": latency_ms, "tools_used": used,
+                "media": self.tools.last_media}
 
     def _dispatch_mode(self, text: str, *, confirmed: bool,
                        session: str = "") -> tuple[str, list[str], int | None]:
