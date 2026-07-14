@@ -274,16 +274,45 @@ code{font-family:var(--mono);color:var(--accent);font-size:12px}
   background:rgba(0,0,0,.35);border:1px solid var(--line);border-radius:8px;
   color:var(--text);padding:7px 10px;font-family:var(--mono);font-size:13px;outline:none}
 .tier-row select:focus,.tier-row input:focus{border-color:var(--line-bright)}
-/* ---------- search visuals: floating related photos + article card ---------- */
+/* ---------- search visuals: floating numbered photos + article card ---------- */
 .search-visuals{position:fixed;inset:0;z-index:6;pointer-events:none;overflow:hidden}
-.float-photo{position:absolute;width:118px;height:118px;object-fit:cover;border-radius:14px;
-  border:1px solid var(--line-bright);box-shadow:0 10px 34px rgba(0,0,0,.5),0 0 0 1px rgba(0,224,255,.15);
-  pointer-events:auto;cursor:pointer;opacity:0;
-  animation:photoIn .5s ease forwards,floaty 7s ease-in-out infinite;transition:transform .2s,box-shadow .2s}
-.float-photo:hover{transform:scale(1.07);box-shadow:0 14px 44px rgba(0,0,0,.6),0 0 0 1px var(--accent);z-index:2}
-@keyframes photoIn{to{opacity:.92}}
-@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
-@media (max-width:900px){.float-photo{width:82px;height:82px}}
+.float-item{position:absolute;width:132px;pointer-events:auto;cursor:pointer;opacity:0;
+  animation:flyIn .7s cubic-bezier(.2,.85,.25,1) both,floaty 7s ease-in-out infinite;transition:transform .2s}
+.float-item:hover{transform:scale(1.06);z-index:3}
+/* pop in the screen centre, then glide to the grid slot (--dx/--dy set per item) */
+@keyframes flyIn{
+  0%{transform:translate(var(--dx,0),var(--dy,0)) scale(1.45);opacity:0}
+  14%{opacity:1}
+  100%{transform:translate(0,0) scale(1);opacity:1}}
+.float-item img{display:block;width:132px;height:96px;object-fit:cover;border-radius:13px;
+  border:1px solid var(--line-bright);box-shadow:0 10px 34px rgba(0,0,0,.5),0 0 0 1px rgba(0,224,255,.15)}
+.float-item:hover img{box-shadow:0 14px 44px rgba(0,0,0,.6),0 0 0 1px var(--accent)}
+.float-num{position:absolute;top:-9px;left:-9px;width:24px;height:24px;border-radius:50%;
+  background:var(--accent);color:#04121a;font-family:var(--mono);font-weight:700;font-size:13px;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 3px 10px rgba(0,0,0,.5);z-index:2}
+.float-cap{margin-top:5px;font-size:11px;line-height:1.3;color:var(--text);
+  background:rgba(2,4,10,.6);border-radius:7px;padding:3px 7px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+@keyframes photoIn{to{opacity:1}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@media (max-width:900px){.float-item,.float-item img{width:104px}.float-item img{height:74px}}
+
+/* in-HUD article reader (iframe + text Reader fallback) */
+.article-frame{position:fixed;z-index:11;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(920px,92vw);height:min(80vh,760px);display:flex;flex-direction:column;
+  border-radius:16px;overflow:hidden;opacity:0;animation:photoIn .3s ease forwards}
+.af-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}
+.af-num{flex:0 0 auto;min-width:24px;height:24px;padding:0 6px;border-radius:12px;background:var(--accent);
+  color:#04121a;font-family:var(--mono);font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center}
+.af-title{flex:1;min-width:0;font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.af-actions{display:flex;gap:8px;align-items:center}
+.af-body{flex:1;min-height:0;position:relative;background:#0a0e16}
+.af-iframe{width:100%;height:100%;border:0;background:#fff}
+.af-reader{width:100%;height:100%;overflow:auto;padding:22px 30px;line-height:1.7;font-size:15px;color:var(--text)}
+.af-reader h1{font-size:20px;margin:0 0 14px}
+.af-reader p{margin:0 0 13px;color:#cdd6e4}
+.af-note{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--muted);
+  background:rgba(2,4,10,.7);border:1px solid var(--line);border-radius:20px;padding:5px 12px;pointer-events:none}
 .article-card{position:fixed;right:22px;bottom:22px;z-index:8;width:344px;max-width:calc(100vw - 32px);
   border-radius:16px;overflow:hidden;display:flex;flex-direction:column;opacity:0;animation:photoIn .4s ease forwards}
 .artc-hero{height:150px;background-size:cover;background-position:center;border-bottom:1px solid var(--line)}
