@@ -23,6 +23,15 @@ FRAME = 1280               # 80 ms @ 16 kHz — the openWakeWord frame size
 _MAX_UTTERANCE_S = 15      # hard cap so a stuck VAD can't record forever
 
 
+def _stop_playback() -> None:
+    """Interrupt any in-progress native playback (barge-in / user Stop)."""
+    try:
+        import sounddevice as sd
+        sd.stop()
+    except Exception:
+        pass
+
+
 # --------------------------------------------------------------------------- #
 # Dependency / model availability
 # --------------------------------------------------------------------------- #
@@ -128,6 +137,10 @@ class AudioService:
         play_fn: Callable[[Any, int], None],  # (samples, sr) -> plays, honors abort
         vad_silence_ms: int = 700,
         session: str = "s_voice",
+        aec: Any = None,                      # EchoCanceller (Phase 3) or None
+        ref_provider: Callable[[], Any] = None,   # -> current far-end (TTS) frame, or None
+        full_duplex: bool = False,            # listen while speaking (needs aec + ref)
+        async_turn: bool = True,              # run the LLM+TTS turn off the mic thread
     ) -> None:
         self.router = router
         self.publish = publish
@@ -137,11 +150,16 @@ class AudioService:
         self.play_fn = play_fn
         self.vad_silence_ms = vad_silence_ms
         self.session = session
+        self.aec = aec
+        self.ref_provider = ref_provider
+        self.full_duplex = bool(full_duplex and aec is not None)
+        self.async_turn = async_turn
 
         self.state = "idle"
         self._utter: list = []
         self._silence_frames = 0
         self._abort = threading.Event()
+        self._barge = False
         self._turn = 0
 
     # ----- helpers -------------------------------------------------------- #
@@ -160,8 +178,13 @@ class AudioService:
 
     # ----- per-frame state machine (the testable core) -------------------- #
     def feed(self, frame) -> None:
-        """Process one 80 ms int16 frame. No-op while speaking (half-duplex)."""
-        if self.state in ("speaking", "transcribing", "thinking"):
+        """Process one 80 ms int16 frame. During 'speaking', half-duplex ignores
+        the mic; full-duplex runs AEC + wake on the cleaned signal for barge-in."""
+        if self.state == "speaking":
+            if self.full_duplex:
+                self._maybe_barge(frame)
+            return
+        if self.state in ("transcribing", "thinking"):
             return
         if self.state == "idle":
             try:
@@ -181,28 +204,50 @@ class AudioService:
                 self._silence_frames = 0
             too_long = len(self._utter) > int(_MAX_UTTERANCE_S * SAMPLE_RATE / FRAME)
             if self._silence_frames >= self._silence_limit_frames or too_long:
-                self._finish_utterance()
+                self._start_turn()
 
-    def _finish_utterance(self) -> None:
+    def _maybe_barge(self, frame) -> bool:
+        """AEC-clean the mic against the far-end (TTS) frame, then run wake on the
+        residual — so 'Hey Jarvis' interrupts mid-sentence without self-triggering.
+        Sets the abort + barge flags; the turn thread then switches to listening."""
+        try:
+            ref = self.ref_provider() if self.ref_provider else None
+            cleaned = self.aec.process(frame, ref) if (self.aec and ref is not None) else frame
+            if self.wake_fn(cleaned):
+                self._barge = True
+                self._abort.set()
+                _stop_playback()
+                self.publish({"type": "wake"})
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _start_turn(self) -> None:
         import numpy as np
         self._set_state("transcribing")
         frames = self._utter
         self._utter = []
+        audio = (np.concatenate([np.asarray(f, dtype=np.int16) for f in frames])
+                 if frames else np.zeros(0, dtype=np.int16))
+        if self.async_turn:
+            threading.Thread(target=self._run_turn, args=(audio,), daemon=True).start()
+        else:
+            self._run_turn(audio)
+
+    def _run_turn(self, audio) -> None:
+        """STT → Router → speak. Runs off the mic thread (async) so the mic loop
+        stays live for barge-in while ATLAS thinks and speaks."""
         try:
-            audio = np.concatenate([np.asarray(f, dtype=np.int16) for f in frames]) \
-                if frames else np.zeros(0, dtype=np.int16)
-            samples = audio.astype(np.float32) / 32768.0
-            text = (self.stt_fn(samples) or "").strip()
+            text = (self.stt_fn(audio.astype("float32") / 32768.0) or "").strip()
         except Exception:
             text = ""
         if not text:
             self._set_state("idle")
             return
         self.publish({"type": "final", "text": text})
-        self._respond(text)
-
-    def _respond(self, text: str) -> None:
         self._abort.clear()
+        self._barge = False
         self._turn += 1
         self._set_state("thinking")
         try:
@@ -231,20 +276,28 @@ class AudioService:
             except Exception:
                 pass
         self.publish({"type": "tts", "state": "stop"})
-        self._set_state("idle")
+        # barge-in → go straight to listening for the interrupting command; else idle.
+        if self._barge:
+            self._barge = False
+            self._utter = []
+            self._silence_frames = 0
+            self._set_state("listening")
+        else:
+            self._set_state("idle")
 
     # ----- external commands (from /voice/ws) ----------------------------- #
     def command(self, cmd: str) -> None:
         if cmd == "abort":
+            self._barge = False        # explicit stop → go quiet, not into listening
             self._abort.set()
-            try:
-                import sounddevice as sd
-                sd.stop()
-            except Exception:
-                pass
+            _stop_playback()
             if self.state in ("speaking", "listening"):
                 self._utter = []
                 self._set_state("idle")
+        elif cmd == "start" and self.state == "idle":
+            self._utter = []
+            self._silence_frames = 0
+            self._set_state("listening")
 
 
 # --------------------------------------------------------------------------- #
@@ -279,17 +332,45 @@ class NativeAudioRunner:
         speed = float(vcfg.get("speech_rate", 1.0))
 
         from . import tts as tts_engine
+        from collections import deque
+        from .aec import make_aec
+
+        # Full-duplex AEC (Phase 3): the far-end (Kokoro) frames are queued into a
+        # reference buffer as they play; the mic loop pops them so the canceller
+        # sees what's coming out of the speaker. Timing here is best-effort and
+        # wants on-device delay calibration; the macOS VoiceProcessingIO backend
+        # (aec_backend="os", native bridge) avoids this plumbing entirely.
+        aec_backend = str(vcfg.get("aec_backend", "os"))
+        aec = make_aec(aec_backend) if aec_backend not in ("none", "off") else None
+        ref_q: deque = deque(maxlen=64)
+
+        def ref_provider():
+            return ref_q.popleft() if ref_q else None
+
+        def _resample_16k(samples, sr):
+            if sr == SAMPLE_RATE:
+                return samples
+            import numpy as np
+            n = int(len(samples) * SAMPLE_RATE / sr)
+            return np.interp(np.linspace(0, len(samples), n, endpoint=False),
+                             np.arange(len(samples)), samples).astype(np.float32)
 
         def synth_fn(text: str):
             return tts_engine.synth_pcm(text, voice=voice_id, speed=speed)
 
         def play_fn(samples, sr):
+            # Queue the far-end frames for the AEC reference, then play.
+            r = _resample_16k(np.asarray(samples, dtype=np.float32), sr)
+            pcm16 = np.clip(r * 32768.0, -32768, 32767).astype(np.int16)
+            for i in range(0, len(pcm16), FRAME):
+                ref_q.append(pcm16[i:i + FRAME])
             sd.play(samples, sr); sd.wait()
 
         self.service = AudioService(
             router=self.router, publish=self.hub.publish,
             wake_fn=wake, stt_fn=stt, synth_fn=synth_fn, play_fn=play_fn,
             vad_silence_ms=int(vcfg.get("vad_silence_ms", 700)),
+            aec=aec, ref_provider=ref_provider, full_duplex=(aec is not None),
         )
 
         def _cb(indata, frames, time_info, status):

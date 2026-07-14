@@ -29,6 +29,7 @@ def _svc(**over):
         synth_fn=lambda text: (np.zeros(4, dtype=np.float32), 16000),
         play_fn=lambda samples, sr: played.append((len(samples), sr)),
         vad_silence_ms=160,          # 2 frames of silence ends the utterance
+        async_turn=False,            # run the turn inline so tests are deterministic
     )
     defaults.update(over)
     svc = A.AudioService(**defaults)
