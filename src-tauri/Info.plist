@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Merged into the app's Info.plist by Tauri on macOS. The mic usage string is
+     required for the native voice pipeline (wake word + STT) to prompt for and
+     use the microphone. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>ATLAS listens for the wake word and your voice commands, on-device.</string>
+  <key>LSUIElement</key>
+  <false/>
+</dict>
+</plist>

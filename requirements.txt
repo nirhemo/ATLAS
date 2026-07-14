@@ -28,3 +28,7 @@ pytest>=8.0
 #     pip install sounddevice numpy openwakeword onnxruntime pywhispercpp
 #   Models auto-download on first run: openWakeWord (hey_jarvis + Silero VAD) and
 #   whisper.cpp (base.en). Not installed in CI (no mic); tests inject fakes.
+# Cross-platform secret store (optional): on Windows/Linux the API-key store falls
+#   back to the OS keyring (Credential Manager / Secret Service) when the macOS
+#   `security` CLI isn't present.  pip install keyring
+# Native app packaging (build-time only): pip install pyinstaller  (+ Rust/Tauri CLI).
