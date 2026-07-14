@@ -1,6 +1,6 @@
 {
-  "version": "0.2.0",
-  "codename": "ATLAS — Automated Task & Logic Assistant System",
+  "version": "0.6.0",
+  "codename": "ATLAS \u2014 Automated Task & Logic Assistant System",
   "cycle": 1,
   "phase": 1,
   "layers": {
@@ -14,7 +14,7 @@
     "L8_scheduler": "1.0.0"
   },
   "model_backend": "claude-sonnet-4-6",
-  "model_backend_notes": "Phase 1 — Claude API is the brain. Sonnet for routine turns; escalates to Opus for heavy reasoning per atlas/orchestration/config.json. Local wake word, STT, TTS, memory, and UI run on-device.",
+  "model_backend_notes": "Phase 1 \u2014 Claude API is the brain. Sonnet for routine turns; escalates to Opus for heavy reasoning per atlas/orchestration/config.json. Local wake word, STT, TTS, memory, and UI run on-device.",
   "last_upgrade": "2026-06-13T08:55:00Z",
   "next_scheduled_cycle": "2026-06-14T03:00:00Z",
   "rollback_point": "git tag v0.1.0 (commit aed71b6)",
@@ -22,7 +22,7 @@
   "status": "L8_scheduler_added",
   "owner_approval_pending": [
     "L1 identity personality sign-off",
-    "Identity canaries — replace placeholder answers with real Owner facts",
-    "L7 first 3 connectors — confirm calendar/email/web and authorize install"
+    "Identity canaries \u2014 replace placeholder answers with real Owner facts",
+    "L7 first 3 connectors \u2014 confirm calendar/email/web and authorize install"
   ]
 }

@@ -1,0 +1,5 @@
+# Tauri / Rust build artifacts and the frozen sidecar (all rebuilt by build-app.sh)
+/target
+/gen
+/binaries
+Cargo.lock

@@ -48,3 +48,9 @@ atlas/memory/vault/people/*.md
 
 # L8 Scheduler runtime state (last_run / next_run per job)
 atlas/scheduler/state.json
+
+# Tauri app build artifacts (PyInstaller freeze + Tauri bundle)
+/build/
+/dist/
+src-tauri/target/
+src-tauri/binaries/
