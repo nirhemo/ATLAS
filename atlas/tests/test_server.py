@@ -92,3 +92,48 @@ def test_scheduler_endpoint_lists_jobs():
 def test_scheduler_run_unknown_job_404():
     r = client.post("/api/scheduler/run/ghost")
     assert r.status_code == 404
+
+
+def test_voice_ws_handshake_reports_no_native_audio():
+    # Phase 1 seam: /voice/ws exists and handshakes, but advertises audio=False so
+    # the HUD keeps its browser Web Speech provider until the native service lands.
+    with client.websocket_connect("/voice/ws") as ws:
+        assert ws.receive_json()["type"] == "hello"
+        caps = ws.receive_json()
+        assert caps["type"] == "capabilities" and caps["audio"] is False
+        assert ws.receive_json() == {"type": "ready", "audio": False}
+        assert ws.receive_json() == {"type": "state", "value": "idle"}
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}
+
+
+def test_voice_ws_native_path_forwards_commands(monkeypatch):
+    # When the native runner is active, /voice/ws reports audio=True and routes
+    # start/stop/abort to it (verified with a fake runner — no mic needed).
+    from atlas.server import app as appmod
+
+    class FakeRunner:
+        def __init__(self):
+            self.cmds = []
+
+        def command(self, c):
+            self.cmds.append(c)
+
+    fake = FakeRunner()
+    monkeypatch.setattr(appmod, "audio_runner", fake)
+    with client.websocket_connect("/voice/ws") as ws:
+        assert ws.receive_json()["type"] == "hello"
+        assert ws.receive_json()["audio"] is True          # capabilities
+        assert ws.receive_json() == {"type": "ready", "audio": True}
+        assert ws.receive_json() == {"type": "state", "value": "idle"}
+        ws.send_json({"type": "abort"})
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}
+    assert "abort" in fake.cmds
+
+
+def test_voice_native_status_endpoint():
+    r = client.get("/api/voice/native")
+    assert r.status_code == 200
+    b = r.json()
+    assert "available" in b and "running" in b and "capabilities" in b

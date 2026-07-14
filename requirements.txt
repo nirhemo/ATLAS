@@ -21,5 +21,10 @@ pytest>=8.0
 #     pip install kokoro-onnx soundfile "misaki[en]"
 #   then download kokoro-v1.0.onnx + voices-v1.0.bin into
 #   atlas/interface/voice/models/ (github.com/thewh1teagle/kokoro-onnx releases).
-# STT / wake word (real hardware): browser Web Speech today; openwakeword,
-#   silero-vad, whisper.cpp later. These need a mic, not present in CI.
+# Native voice pipeline (L3, opt-in via voice.native_audio) — replaces the browser
+#   Web Speech loop with an on-device, offline pipeline: mic → wake → STT → Kokoro.
+#   Optional & heavy (like Kokoro); ATLAS falls back to browser Web Speech without
+#   them. macOS needs PortAudio (`brew install portaudio`) for sounddevice.
+#     pip install sounddevice numpy openwakeword onnxruntime pywhispercpp
+#   Models auto-download on first run: openWakeWord (hey_jarvis + Silero VAD) and
+#   whisper.cpp (base.en). Not installed in CI (no mic); tests inject fakes.

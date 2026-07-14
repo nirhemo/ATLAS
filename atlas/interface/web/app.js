@@ -278,6 +278,11 @@ $("#composer").addEventListener("submit", (e) => {
 });
 
 /* ---------- voice: Web Speech API (STT + TTS) ---------- */
+/* Provider seam: "web" = browser Web Speech (below); "native" = the Python audio
+   service over /voice/ws (echo-cancelled wake/STT — Phase 2). Only ONE owns the
+   mic. Phase 1 stays "web"; the guards below make the switch clean when native
+   audio arrives. */
+let voiceMode = "web";
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recog = null, listening = false, voiceTurn = false, followTimer = null;
 function initVoice() {
@@ -295,6 +300,7 @@ function initVoice() {
   recog.onend = () => { if (listening) { listening = false; if (orbState === "listening") setState("idle"); } resumeWake(); };
 }
 function startListening() {
+  if (voiceMode === "native") { NativeVoice.send({ type: "start" }); return; }
   if (!recog) { openChat(); return; }
   if (wakeRunning) { try { wakeSR.stop(); } catch {} wakeRunning = false; }  // free the mic for command capture
   stopSpeaking();
@@ -352,6 +358,7 @@ function initBarge() {
   bargeSR.onerror = () => { bargeRunning = false; };
 }
 function startBarge() {
+  if (voiceMode === "native") return;   // native service handles barge-in with real AEC
   if (!bargeSR || !wakeEnabled || bargeRunning || orbState !== "speaking") return;
   stopFrameListen();                 // free the mic for the barge listener while speaking
   try { bargeSR.start(); bargeRunning = true; } catch {}
@@ -382,6 +389,7 @@ function initFrameListen() {
   frameSR.onerror = () => { frameListening = false; };
 }
 function startFrameListen() {
+  if (voiceMode === "native") return;   // native service owns the mic
   if (!frameSR || !wakeEnabled) return;
   if ($("#articleFrame").hidden || frameListening || orbState === "speaking") return;
   try { wakeSR && wakeSR.stop(); } catch {} wakeRunning = false;
@@ -489,6 +497,10 @@ async function speakReply(text) {
   }
 }
 $("#orb").addEventListener("click", () => {
+  if (voiceMode === "native") {                 // native service owns capture/playback
+    NativeVoice.send({ type: orbState === "speaking" || orbState === "listening" ? "abort" : "start" });
+    return;
+  }
   if (orbState === "speaking") { stopSpeaking(); setState("idle"); resumeWake(); return; }
   listening ? stopListening() : startListening();
 });
@@ -527,6 +539,7 @@ function initWake() {
   };
 }
 function startWake() {
+  if (voiceMode === "native") return;   // native service listens for the wake word
   if (!wakeSR || wakeRunning || listening || orbState === "speaking" || orbState === "thinking") return;
   try { wakeSR.start(); wakeRunning = true; } catch {}
 }
@@ -1285,6 +1298,60 @@ function sessionId() {
   return s;
 }
 
+/* ---------- native voice channel (Phase 1 seam; audio pipeline lands Phase 2) ---------- */
+/* Connects to the additive /voice/ws. If the backend ever reports audio=true (the
+   native mic/wake/STT/AEC service is installed), the HUD hands mic ownership to it;
+   otherwise it stays on the browser Web Speech provider. */
+const NativeVoice = {
+  ws: null, ready: false, caps: null, retry: 0,
+  connect() {
+    try {
+      const ws = new WebSocket((API || location.origin).replace(/^http/, "ws") + "/voice/ws");
+      this.ws = ws;
+      ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } this.onMsg(m); };
+      ws.onclose = () => { this.ready = false; if (voiceMode === "native") applyVoiceProvider(); this.reconnect(); };
+      ws.onerror = () => {};
+    } catch {}
+  },
+  reconnect() { this.retry = Math.min(this.retry + 1, 6); setTimeout(() => this.connect(), 1500 * this.retry); },
+  onMsg(m) {
+    if (m.type === "capabilities") { this.caps = m; return; }
+    if (m.type === "ready") { this.ready = true; this.retry = 0; applyVoiceProvider(); return; }
+    if (voiceMode !== "native") return;              // ignore events unless native owns the mic
+    switch (m.type) {
+      case "state": {                                // drive the orb (map transcribing→thinking)
+        const s = m.value === "transcribing" ? "thinking" : m.value;
+        setState(s === "listening" || s === "thinking" || s === "speaking" ? s : "idle");
+        break;
+      }
+      case "pong": break;
+      case "final":                                  // what ATLAS heard
+        if (m.text) { addMsg("owner", m.text); setTranscript(`<span class="you">You:</span> ${m.text}`); }
+        break;
+      case "reply":                                  // ATLAS's answer (spoken natively by the service)
+        if (m.text) { addMsg("atlas", m.text); setTranscript(`<span class="atlas">ATLAS:</span> ${m.text}`); }
+        if (m.media !== undefined) renderSearchMedia(m.media);
+        break;
+      // "wake" and "tts" states are reflected via the "state" events above.
+    }
+  },
+  available() { return this.ready && !!this.caps && this.caps.audio === true; },
+  send(o) { try { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(o)); } catch {} },
+};
+function applyVoiceProvider() {
+  const native = NativeVoice.available();
+  const next = native ? "native" : "web";
+  if (next === voiceMode) return;
+  voiceMode = next;
+  if (native) {                                   // hand the mic to the native service
+    try { wakeSR && wakeSR.stop(); recog && recog.stop(); bargeSR && bargeSR.stop(); frameSR && frameSR.stop(); } catch {}
+    wakeRunning = bargeRunning = frameListening = false;
+  } else if (wakeEnabled) {                        // native dropped → resume Web Speech
+    resumeWake();
+  }
+  console.log("[voice] provider:", voiceMode, this && this.caps ? "" : (NativeVoice.caps || ""));
+}
+
 /* ---------- live state via WebSocket (optional) ---------- */
 function connectWS() {
   try {
@@ -1319,6 +1386,7 @@ initWake();
 initBarge();
 initFrameListen();
 initArticleFrame();
+NativeVoice.connect();     // Phase 1: connect to /voice/ws; stays on Web Speech until native audio is ready
 if (localStorage.getItem("atlas_wake") === "on") setWake(true); else updateWakeUI();
 renderStatus(); renderMetrics(); renderMemory(); renderUpgrade(); renderScheduler(); renderCredits();
 connectWS();
