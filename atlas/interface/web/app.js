@@ -238,6 +238,7 @@ function addMsg(role, text, cls = "") {
 }
 async function ask(text, { speak = false } = {}) {
   if (!text) return;
+  if (handleArticleCommand(text, speak)) return;   // "open article 2" / "close" — handled in-HUD
   voiceTurn = speak;   // voice turns auto-listen for a follow-up reply
   addMsg("owner", text);
   setState("thinking");
@@ -320,10 +321,40 @@ function stopSpeaking() {
   try { speechSynthesis.cancel(); } catch {}
   if (currentAudio) { try { currentAudio.pause(); } catch {} currentAudio = null; }
 }
+
+/* ---------- barge-in: listen WHILE speaking so "Stop" interrupts ---------- */
+/* A dedicated recognizer runs only during speech (the wake/command recognizers
+   are idle then, so there's no mic contention). Say "stop / quiet / enough" and
+   ATLAS stops mid-sentence. */
+const bargeSR = SR ? new SR() : null;
+let bargeRunning = false;
+const STOP_RE = /\b(stop|quiet|enough|cancel|shut up|be quiet|silence|nevermind|never mind|halt)\b/i;
+function initBarge() {
+  if (!bargeSR) return;
+  bargeSR.continuous = true; bargeSR.interimResults = true; bargeSR.lang = "en-US";
+  bargeSR.onresult = (e) => {
+    const txt = Array.from(e.results).map(r => r[0].transcript).join(" ");
+    if (STOP_RE.test(txt)) bargeInterrupt();
+  };
+  bargeSR.onend = () => { bargeRunning = false; if (orbState === "speaking") setTimeout(startBarge, 150); };
+  bargeSR.onerror = () => { bargeRunning = false; };
+}
+function startBarge() {
+  if (!bargeSR || !wakeEnabled || bargeRunning || orbState !== "speaking") return;
+  try { bargeSR.start(); bargeRunning = true; } catch {}
+}
+function stopBarge() { if (bargeSR) { bargeRunning = false; try { bargeSR.stop(); } catch {} } }
+function bargeInterrupt() {
+  stopBarge(); stopSpeaking();
+  voiceTurn = false;                 // don't open a follow-up mic — user wants quiet
+  clearTimeout(followTimer);
+  setState("idle"); toast("Stopped ✋", "ok"); resumeWake();
+}
 /* After ATLAS finishes speaking: on a voice turn, open the mic for a few seconds
    so the Owner can reply without re-saying the wake word — a fluent back-and-forth.
    If they stay silent, we drop back to wake-word listening ("wait till I call"). */
 function afterSpeak() {
+  stopBarge();
   setState("idle");
   if (voiceTurn) listenFollowUp(); else resumeWake();
 }
@@ -341,7 +372,7 @@ function browserSpeak(text) {
   const u = new SpeechSynthesisUtterance(text);
   const v = jarvisVoice(); if (v) u.voice = v;
   u.rate = 0.97; u.pitch = 0.9;
-  u.onstart = () => setState("speaking");
+  u.onstart = () => { setState("speaking"); startBarge(); };
   u.onend = () => afterSpeak();
   u.onerror = () => afterSpeak();
   setState("speaking"); speechSynthesis.speak(u);
@@ -387,6 +418,7 @@ async function speakReply(text) {
     audio.onended = () => { URL.revokeObjectURL(url); if (currentAudio === audio) currentAudio = null; afterSpeak(); };
     audio.onerror = () => { URL.revokeObjectURL(url); currentAudio = null; browserSpeak(spoken); };
     await audio.play();
+    startBarge();                    // listen for "Stop" while the reply plays
   } catch {
     browserSpeak(spoken);
   }
@@ -1018,29 +1050,53 @@ $("#backendTest").addEventListener("click", async () => {
   finally { btn.disabled = false; btn.textContent = "Test"; }
 });
 
-/* ---------- search visuals: floating related photos + article card ---------- */
+/* ---------- search visuals: numbered floating photos + article card + reader ---------- */
+const PLACEHOLDER = "data:image/svg+xml;utf8," + encodeURIComponent(
+  "<svg xmlns='http://www.w3.org/2000/svg' width='132' height='96'><rect width='132' height='96' fill='#0c1420'/>"
+  + "<text x='50%' y='58%' fill='#40566e' font-size='30' text-anchor='middle' font-family='monospace'>◭</text></svg>");
+let searchResults = [];   // numbered results from the last search ("open article N")
+
 function renderSearchMedia(media) {
   const wrap = $("#searchVisuals"), card = $("#articleCard");
   if (!wrap || !card) return;
-  wrap.innerHTML = "";                         // clear previous search's photos
-  if (!media || (!(media.images && media.images.length) && !media.article)) { card.hidden = true; return; }
+  wrap.innerHTML = "";                          // clear previous search's photos
+  const results = (media && media.results) || [];
+  searchResults = results;
+  if (!results.length && !(media && media.article)) { card.hidden = true; return; }
 
-  // floating related photos, scattered around the edges (away from the orb)
-  const spots = [[6, 16], [80, 12], [9, 58], [83, 54], [40, 6], [63, 70], [22, 82], [72, 84]];
-  (media.images || []).slice(0, 6).forEach((im, i) => {
-    const el = document.createElement("img");
-    el.className = "float-photo"; el.loading = "lazy";
-    el.src = im.thumbnail || im.image; el.alt = im.title || "";
-    if (im.title) el.title = im.title;
-    const [x, y] = spots[i % spots.length];
-    el.style.left = x + "%"; el.style.top = y + "%";
-    el.style.animationDelay = `${i * 0.35}s, ${i * 0.6}s`;   // photoIn, floaty
-    el.addEventListener("click", () => window.open(im.source || im.image, "_blank", "noopener"));
-    el.addEventListener("error", () => el.remove());
-    wrap.appendChild(el);
+  // Numbered photos: they POP in the center, then fly out one-by-one to their
+  // slot in an organized floating grid (a "table in the air") near the top.
+  const shown = results.slice(0, 6);
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const compact = vw < 900;
+  const cw = compact ? 104 : 132, ch = (compact ? 74 : 96) + 34;   // card w / (img h + caption)
+  const gapX = 26, gapY = 20;
+  const cols = Math.min(shown.length, 3);
+  const gridW = cols * cw + (cols - 1) * gapX;
+  const startX = Math.max(12, (vw - gridW) / 2);
+  const startY = Math.round(vh * 0.09);
+  const cx = vw / 2 - cw / 2, cy = vh / 2 - ch / 2;               // screen center (pop origin)
+  shown.forEach((r, i) => {
+    const col = i % cols, row = Math.floor(i / cols);
+    const x = startX + col * (cw + gapX), y = startY + row * (ch + gapY);
+    const item = document.createElement("div"); item.className = "float-item";
+    item.style.left = x + "px"; item.style.top = y + "px";
+    item.style.setProperty("--dx", (cx - x) + "px");             // fly from center →
+    item.style.setProperty("--dy", (cy - y) + "px");
+    const fly = i * 0.16;                                         // staggered: each in its turn
+    item.style.animationDelay = `${fly}s, ${0.7 + fly}s`;        // flyIn, then floaty
+    const num = document.createElement("span"); num.className = "float-num"; num.textContent = r.n || (i + 1);
+    const img = document.createElement("img"); img.loading = "lazy";
+    img.src = r.image || PLACEHOLDER; img.alt = r.title || "";
+    img.addEventListener("error", () => { img.src = PLACEHOLDER; });
+    const cap = document.createElement("div"); cap.className = "float-cap"; cap.textContent = r.title || r.url;
+    item.append(num, img, cap);
+    item.title = `${r.n}. ${r.title || ""} — click, or say “open article ${r.n}”`;
+    item.addEventListener("click", () => openArticleInFrame(r));
+    wrap.appendChild(item);
   });
 
-  // top article card (hero + title + summary + Open + TLDR)
+  // top article card (hero + title + summary + Read + TLDR) — Read opens in-HUD
   const a = media.article;
   if (a && a.url) {
     card.innerHTML = "";
@@ -1057,16 +1113,83 @@ function renderSearchMedia(media) {
     const title = document.createElement("div"); title.className = "artc-title"; title.textContent = a.title || "Article";
     const sum = document.createElement("p"); sum.className = "artc-sum"; sum.textContent = a.summary || "";
     const actions = document.createElement("div"); actions.className = "artc-actions";
-    const open = document.createElement("a");
-    open.className = "navbtn small primary"; open.target = "_blank"; open.rel = "noopener";
-    open.href = a.url; open.textContent = "Open article ↗";
+    const read = document.createElement("button");
+    read.className = "navbtn small primary"; read.textContent = "Read ↗";
+    read.addEventListener("click", () => openArticleInFrame(a));
     const tldr = document.createElement("button");
     tldr.className = "navbtn small"; tldr.textContent = "TLDR";
-    tldr.addEventListener("click", () => ask(`Give me a short TLDR of this article: ${a.url}`, true));
-    actions.append(open, tldr);
+    tldr.addEventListener("click", () => ask(`Give me a short TLDR of this article: ${a.url}`, { speak: true }));
+    actions.append(read, tldr);
     body.append(title, sum, actions); card.appendChild(body);
     card.hidden = false;
   } else card.hidden = true;
+}
+
+/* in-HUD reader: live iframe with a text-Reader fallback (never leaves ATLAS) */
+function openArticleInFrame(r) {
+  if (!r || !r.url) return;
+  const f = $("#articleFrame");
+  f.dataset.url = r.url; f.dataset.title = r.title || "Article"; f.dataset.n = r.n || "";
+  $("#afNum").textContent = r.n || "";
+  $("#afNum").style.display = r.n ? "" : "none";
+  $("#afTitle").textContent = r.title || "Article";
+  f.hidden = false;
+  showFrameLive();
+}
+function _afCurrent() { const f = $("#articleFrame"); return { url: f.dataset.url, title: f.dataset.title, n: f.dataset.n }; }
+function _afMode(m) { $("#afLive").classList.toggle("active", m === "live"); $("#afReader").classList.toggle("active", m === "reader"); }
+function showFrameLive() {
+  const r = _afCurrent(), body = $("#afBody"); body.innerHTML = "";
+  const fr = document.createElement("iframe"); fr.className = "af-iframe";
+  fr.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms");
+  fr.setAttribute("referrerpolicy", "no-referrer");
+  fr.src = r.url; body.appendChild(fr);
+  const note = document.createElement("div"); note.className = "af-note";
+  note.textContent = "Blank? Some sites block embedding — tap ▤ Reader";
+  body.appendChild(note); setTimeout(() => note.remove(), 6000);
+  _afMode("live");
+}
+async function showFrameReader() {
+  const r = _afCurrent(), body = $("#afBody");
+  body.innerHTML = `<div class="af-reader"><p class="muted">Loading readable text…</p></div>`;
+  _afMode("reader");
+  const d = await getJSON("/api/read?url=" + encodeURIComponent(r.url), null);
+  if (d && d.ok) {
+    const div = document.createElement("div"); div.className = "af-reader";
+    const h = document.createElement("h1"); h.textContent = d.title || r.title || "Article"; div.appendChild(h);
+    (d.text || "").split(/\n{2,}/).forEach(p => { p = p.trim(); if (p) { const el = document.createElement("p"); el.textContent = p; div.appendChild(el); } });
+    body.innerHTML = ""; body.appendChild(div);
+  } else {
+    body.innerHTML = `<div class="af-reader"><p class="muted">Couldn't extract this page. Try ◐ Live, or ask ATLAS to summarize it.</p></div>`;
+  }
+}
+function closeFrame() { const f = $("#articleFrame"); f.hidden = true; $("#afBody").innerHTML = ""; }
+function initArticleFrame() {
+  $("#afLive").addEventListener("click", showFrameLive);
+  $("#afReader").addEventListener("click", showFrameReader);
+  $("#afClose").addEventListener("click", closeFrame);
+  $("#afTldr").addEventListener("click", () => { const r = _afCurrent(); ask(`Give me a short TLDR of this article: ${r.url}`, { speak: true }); });
+}
+
+/* "open article 2" / "close article" — resolved in-HUD (voice or chat) */
+const _NUMWORD = { first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+function handleArticleCommand(text, speak) {
+  const t = (text || "").toLowerCase().trim();
+  if (t === "close" || /\b(close|dismiss|hide)\b.*\b(article|reader|frame|page|window)\b/.test(t)) {
+    if (!$("#articleFrame").hidden) { closeFrame(); return true; }
+    return false;
+  }
+  const m = t.match(/\b(?:open|show|read|pull up|bring up|display|go to)\b\s+(?:the\s+)?(?:(?:article|result|number|link|photo|image|story|item|#|no\.?)\s+)?(?:the\s+)?(\d{1,2}|first|second|third|fourth|fifth|sixth|one|two|three|four|five|six)\b/);
+  if (!m) return false;
+  const n = /^\d+$/.test(m[1]) ? +m[1] : _NUMWORD[m[1]];
+  if (!n) return false;
+  const r = searchResults[n - 1];
+  if (!r) { toast(`No article ${n} yet — search first`, "err"); return true; }
+  addMsg("owner", `open article ${n}`);
+  addMsg("atlas", `Opening “${r.title || r.url}”.`);
+  openArticleInFrame(r);
+  if (speak) resumeWake();
+  return true;
 }
 
 /* ---------- stable session id (so conversation history accumulates) ---------- */
@@ -1093,6 +1216,7 @@ const typing = () => ["INPUT", "TEXTAREA"].includes(document.activeElement?.tagN
 addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (!$("#settingsModal").hidden) return closeSettings();
+    if (!$("#articleFrame").hidden) return closeFrame();
     if (!$("#chatPop").hidden) return closeChat();
     if ($("#logsDrawer").dataset.open === "true") return toggleLogs(false);
   }
@@ -1110,6 +1234,8 @@ setState("idle");
 waveform();
 initVoice();
 initWake();
+initBarge();
+initArticleFrame();
 if (localStorage.getItem("atlas_wake") === "on") setWake(true); else updateWakeUI();
 renderStatus(); renderMetrics(); renderMemory(); renderUpgrade(); renderScheduler(); renderCredits();
 connectWS();

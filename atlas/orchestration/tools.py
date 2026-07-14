@@ -89,7 +89,9 @@ class ToolBox:
         data = rich(args.get("query", ""))
         # Stash visuals (images + top article) for the HUD; the model gets the text.
         self.last_media = {"type": "search", "query": data.get("query"),
-                           "images": data.get("images") or [], "article": data.get("article")}
+                           "images": data.get("images") or [],
+                           "results": data.get("results") or [],
+                           "article": data.get("article")}
         return data.get("text", "")
 
     def _t_read_article(self, args: dict[str, Any]) -> str:

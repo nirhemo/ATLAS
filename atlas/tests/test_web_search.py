@@ -37,6 +37,18 @@ def test_rich_shapes_media(monkeypatch):
     assert "Web results" in d["text"]
 
 
+def test_rich_numbers_results_for_open_article_n(monkeypatch):
+    rows = [("A", "sa", "https://a"), ("B", "sb", "https://b"), ("C", "sc", "https://c")]
+    monkeypatch.setattr(ws, "_rows", lambda q, n, web: rows)
+    monkeypatch.setattr(ws, "_images", lambda q, n=6: [
+        {"image": f"https://img/{i}.jpg", "thumbnail": "", "source": "", "title": ""} for i in range(3)])
+    d = ws.rich("news")
+    assert [r["n"] for r in d["results"]] == [1, 2, 3]          # numbered for "open article N"
+    assert d["results"][1]["url"] == "https://b"                # article 2 → second result
+    assert d["results"][2]["image"] == "https://img/2.jpg"      # thumbnail zipped by index
+    assert d["article"]["url"] == "https://a"                   # top result
+
+
 def test_toolbox_web_search_sets_last_media(monkeypatch):
     monkeypatch.setattr(ws, "rich", lambda q: {
         "query": q, "text": "the text for the model",

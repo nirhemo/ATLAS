@@ -136,12 +136,15 @@ def rich(query: str, *, max_results: int | None = None) -> dict[str, Any]:
     except Exception as exc:
         rows, text = [], f"Web search failed ({type(exc).__name__})."
     images = _images(query, max(n + 1, 6))
-    article = None
-    if rows:
-        title, body, url = rows[0]
-        article = {"title": title, "url": url, "summary": body,
-                   "image": images[0]["image"] if images else None}
-    return {"query": query, "text": text, "images": images, "article": article}
+    # Numbered article results (the Owner can say "open article 2"): each real
+    # web result gets a thumbnail (best-effort, zipped by index) for the HUD.
+    results = []
+    for i, (title, body, url) in enumerate(rows):
+        img = images[i]["image"] if i < len(images) else (images[0]["image"] if images else None)
+        results.append({"n": i + 1, "title": title, "url": url, "summary": body, "image": img})
+    article = results[0] if results else None
+    return {"query": query, "text": text, "images": images,
+            "results": results, "article": article}
 
 
 # ----- article reader (fetch + extract main text) ------------------------ #

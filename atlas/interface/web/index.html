@@ -143,9 +143,24 @@
     </div>
   </div>
 
-  <!-- search visuals: floating related photos + the top article card -->
+  <!-- search visuals: floating numbered photos + the top article card -->
   <div class="search-visuals" id="searchVisuals" aria-hidden="true"></div>
   <aside class="article-card glass" id="articleCard" hidden></aside>
+
+  <!-- in-HUD article reader: live iframe with a text-Reader fallback (never leaves ATLAS) -->
+  <div class="article-frame glass" id="articleFrame" hidden>
+    <header class="af-head">
+      <span class="af-num" id="afNum"></span>
+      <span class="af-title" id="afTitle">Article</span>
+      <div class="af-actions">
+        <button class="navbtn small" id="afLive" title="Live page">◐ Live</button>
+        <button class="navbtn small" id="afReader" title="Readable text">▤ Reader</button>
+        <button class="navbtn small" id="afTldr" title="Ask ATLAS to summarize">TLDR</button>
+        <button class="iconbtn" id="afClose" title="Close (Esc)">✕</button>
+      </div>
+    </header>
+    <div class="af-body" id="afBody"></div>
+  </div>
 
   <!-- toasts -->
   <div class="toasts" id="toasts" aria-live="polite"></div>

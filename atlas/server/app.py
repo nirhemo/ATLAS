@@ -408,6 +408,19 @@ def tts(body: TTSIn) -> Response:
     return Response(content=wav, media_type="audio/wav")
 
 
+@app.get("/api/read")
+def read_page(url: str) -> dict[str, Any]:
+    """Extract an article's readable text so the HUD reader panel can show it
+    in-app when a site blocks iframe embedding. Keeps the Owner inside ATLAS."""
+    from ..connectors.web_search import read_article
+    text = read_article(url)
+    bad = text.startswith(("Couldn't", "There's no", "Web search"))
+    title, body = "", text
+    if not bad and "\n\n" in text:
+        title, body = text.split("\n\n", 1)
+    return {"ok": not bad, "url": url, "title": title.strip(), "text": body.strip()}
+
+
 @app.get("/api/logs")
 def logs(limit: int = 200) -> list[dict[str, Any]]:
     """Recent structured events for the Logs drawer (oldest→newest)."""
