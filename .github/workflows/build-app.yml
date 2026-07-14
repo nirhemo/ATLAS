@@ -1,0 +1,73 @@
+name: Build app
+
+# Builds the native ATLAS desktop app (Tauri shell + frozen FastAPI sidecar) for
+# macOS and Windows. Runs on a version tag (release) or manual dispatch. Signing +
+# notarization activate only when the corresponding secrets are present, so forks
+# and unsigned test builds still succeed.
+#
+# Required secrets for signed macOS builds (Settings → Secrets → Actions):
+#   APPLE_CERTIFICATE (base64 .p12), APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+#   APPLE_ID, APPLE_PASSWORD (app-specific), APPLE_TEAM_ID
+# Windows code-signing (beat SmartScreen) is added later via Azure Key Vault.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14          # Apple Silicon
+            triple: aarch64-apple-darwin
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+
+      - name: Python deps + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Freeze the FastAPI core (sidecar)
+        run: pyinstaller --clean -y deploy/atlas-core.spec
+
+      - name: Name the sidecar with its target triple
+        shell: bash
+        run: |
+          mkdir -p src-tauri/binaries
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            cp dist/atlas-core.exe "src-tauri/binaries/atlas-core-${{ matrix.triple }}.exe"
+          else
+            cp dist/atlas-core "src-tauri/binaries/atlas-core-${{ matrix.triple }}"
+            chmod +x "src-tauri/binaries/atlas-core-${{ matrix.triple }}"
+          fi
+
+      - name: Build the app (tauri-action; signs when secrets present)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: src-tauri
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseName: "ATLAS ${{ github.ref_name }}"
+          releaseDraft: true

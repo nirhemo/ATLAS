@@ -29,10 +29,10 @@ def _identity_prompt() -> str:
 
 
 def keychain_secret(ref: str | None) -> str | None:
-    """Read a secret from the macOS Keychain given a 'keychain:<name>' ref.
-    Lets the Owner store the API key securely (never in settings.json or git)
-    and have ATLAS pick it up without an env var. Returns None off-macOS or
-    if the item is absent."""
+    """Read a secret given a 'keychain:<name>' ref. macOS Keychain via the
+    `security` CLI (primary); on Windows/Linux it falls back to the OS keyring
+    (Credential Manager / Secret Service) via the optional `keyring` package. So
+    the key stays out of settings.json/git on every platform. None if absent."""
     if not ref or not ref.startswith("keychain:"):
         return None
     name = ref.split(":", 1)[1]
@@ -41,8 +41,15 @@ def keychain_secret(ref: str | None) -> str | None:
             ["security", "find-generic-password", "-s", name, "-w"],
             capture_output=True, text=True, timeout=5,
         )
-        return out.stdout.strip() or None
+        val = out.stdout.strip()
+        if val:
+            return val
     except (OSError, subprocess.SubprocessError):
+        pass
+    try:                                    # cross-platform fallback (Windows/Linux)
+        import keyring
+        return keyring.get_password("atlas", name) or None
+    except Exception:
         return None
 
 

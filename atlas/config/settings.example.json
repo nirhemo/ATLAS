@@ -20,7 +20,9 @@
     "tts_voice": "kokoro:bm_george",
     "speech_rate": 1.0,
     "streaming_tts": true,
-    "mic_mute": false
+    "mic_mute": false,
+    "native_audio": false,
+    "aec_backend": "os"
   },
   "model": {
     "mode": "api",

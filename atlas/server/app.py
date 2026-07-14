@@ -52,16 +52,38 @@ def _scheduler_enabled() -> bool:
     return bool(cfg.settings().get("scheduler", {}).get("enabled")) and not os.environ.get("ATLAS_NO_SCHEDULER")
 
 
+def _native_audio_enabled() -> bool:
+    # Opt-in (voice.native_audio) + deps/models present + not disabled for tests.
+    if os.environ.get("ATLAS_NO_AUDIO") or os.environ.get("ATLAS_FORCE_OFFLINE"):
+        return False
+    return bool((cfg.settings().get("voice") or {}).get("native_audio"))
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     if _scheduler_enabled():
         scheduler.start()
+    # Native voice pipeline (Phase 2): mic → wake → STT → Router → Kokoro over /voice/ws.
+    global audio_runner
+    if _native_audio_enabled():
+        from ..interface.voice.audio_service import NativeAudioRunner, available
+        if available():
+            import asyncio
+            voice_hub.bind_loop(asyncio.get_running_loop())
+            audio_runner = NativeAudioRunner(router, voice_hub)
+            started = audio_runner.start()
+            log_event("voice_native", {"started": started})
+            if not started:
+                audio_runner = None
     log_event("startup", {"mode": cfg.settings()["model"].get("mode", "api"),
                           "backend": router.backend,
-                          "scheduler": _scheduler_enabled()})
+                          "scheduler": _scheduler_enabled(),
+                          "native_audio": audio_runner is not None})
     yield
     log_event("shutdown", {})
     scheduler.stop()
+    if audio_runner is not None:
+        audio_runner.stop()
 
 
 app = FastAPI(title="ATLAS", version=__version__, lifespan=lifespan)
@@ -71,6 +93,12 @@ router = Router()
 vault = VaultStore()
 registry = ConnectorRegistry()
 scheduler = Scheduler()
+
+# Native voice (Phase 2): the hub bridges the audio thread to /voice/ws clients;
+# audio_runner is set in lifespan when voice.native_audio is on and deps are present.
+from ..interface.voice.audio_service import VoiceHub  # noqa: E402
+voice_hub = VoiceHub()
+audio_runner = None
 
 
 class ChatIn(BaseModel):
@@ -408,6 +436,21 @@ def tts(body: TTSIn) -> Response:
     return Response(content=wav, media_type="audio/wav")
 
 
+@app.get("/api/voice/native")
+def voice_native() -> dict[str, Any]:
+    """Native-voice pipeline status for the HUD/settings: whether it's enabled,
+    whether the deps+models are installed, and whether it's currently running."""
+    from ..interface.voice.audio_service import available, deps_present, wake_model_path
+    return {
+        "enabled": _native_audio_enabled(),
+        "deps_present": deps_present(),
+        "wake_model": bool(wake_model_path()),
+        "available": available(),
+        "running": audio_runner is not None,
+        "capabilities": _voice_capabilities(),
+    }
+
+
 @app.get("/api/read")
 def read_page(url: str) -> dict[str, Any]:
     """Extract an article's readable text so the HUD reader panel can show it
@@ -607,6 +650,69 @@ async def ws(sock: WebSocket) -> None:
                 await sock.send_json({"type": "state", "value": msg.get("value", "idle")})
     except WebSocketDisconnect:
         return
+
+
+def _voice_capabilities() -> dict[str, Any]:
+    """What the native audio pipeline can do right now. audio=True only when the
+    NativeAudioRunner actually started (mic + wake + STT live); then the HUD hands
+    it mic ownership. Otherwise the browser Web Speech fallback stays active."""
+    on = audio_runner is not None
+    if on:
+        aec = ((cfg.settings().get("voice") or {}).get("aec_backend") not in (None, "none"))
+        return {"v": 1, "audio": True, "wake": True, "stt": True, "aec": bool(aec),
+                "tts_native": True, "reason": "native audio service running"}
+    from ..interface.voice.audio_service import available as _av
+    reason = ("native audio off (enable voice.native_audio)"
+              if not _native_audio_enabled() else
+              ("native audio deps/models not installed" if not _av() else "native audio not started"))
+    return {"v": 1, "audio": False, "wake": False, "stt": False, "aec": False,
+            "tts_native": False, "reason": reason}
+
+
+@app.websocket("/voice/ws")
+async def voice_ws(sock: WebSocket) -> None:
+    """Native-voice channel (additive; /ws is untouched). The HUD's
+    NativeVoiceProvider connects here, handshakes, and — when capabilities report
+    audio=True — takes over the mic. Broadcasts the audio service's events
+    (state/wake/final/reply/tts) and accepts start/stop/abort. Loopback-only."""
+    await sock.accept()
+    caps = _voice_capabilities()
+    await sock.send_json({"type": "hello", "v": 1, "version": __version__})
+    await sock.send_json({"type": "capabilities", **caps})
+    await sock.send_json({"type": "ready", "audio": caps["audio"]})
+    await sock.send_json({"type": "state", "value": "idle"})
+    if not caps["audio"]:
+        # No native pipeline — stay connected for handshake/ping only (HUD uses Web Speech).
+        try:
+            while True:
+                msg = await sock.receive_json()
+                if msg.get("type") == "ping":
+                    await sock.send_json({"type": "pong"})
+        except WebSocketDisconnect:
+            return
+        return
+
+    q = voice_hub.subscribe()
+    import asyncio
+
+    async def _pump() -> None:
+        while True:
+            await sock.send_json(await q.get())
+
+    pump = asyncio.create_task(_pump())
+    try:
+        while True:
+            msg = await sock.receive_json()
+            t = msg.get("type")
+            if t == "ping":
+                await sock.send_json({"type": "pong"})
+            elif t in ("start", "stop", "abort") and audio_runner is not None:
+                audio_runner.command(t)
+    except WebSocketDisconnect:
+        return
+    finally:
+        pump.cancel()
+        voice_hub.unsubscribe(q)
 
 
 # --------------------------------------------------------------------------- #

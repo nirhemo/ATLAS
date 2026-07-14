@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "ATLAS shell: spawn the atlas-core sidecar, tray, autostart, positioner.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-set-focus",
+    "shell:allow-execute",
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [{ "name": "binaries/atlas-core", "sidecar": true, "args": true }]
+    },
+    "positioner:default",
+    "autostart:default"
+  ]
+}

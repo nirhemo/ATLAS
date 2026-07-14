@@ -115,3 +115,22 @@ def synth(text: str, voice: str = "bm_george", speed: float = 1.0) -> bytes | No
         return buf.getvalue()
     except Exception:
         return None
+
+
+def synth_pcm(text: str, voice: str = "bm_george", speed: float = 1.0):
+    """Return (float32 mono samples, sample_rate) for NATIVE playback by the audio
+    service, or None. Same engine as synth(), no WAV wrapping."""
+    text = (text or "").strip()
+    if not text:
+        return None
+    eng = _engine()
+    if eng is None:
+        return None
+    lang = "en-gb" if voice[:1] == "b" else "en-us"
+    try:
+        import numpy as np
+        with _LOCK:
+            samples, sr = eng.create(text, voice=voice, speed=speed, lang=lang)
+        return np.asarray(samples, dtype=np.float32), int(sr)
+    except Exception:
+        return None
